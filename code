@@ -1,0 +1,71 @@
+/* ************* Edit these variables to reflect your preferences ************ */
+var primary_id = "XXXXX"   // This is the calendar you want to create blocks on (usually your email address)
+var secondary_id = "XXXXX"   // This is the calendar you want to pull events from (usually your email address)
+var event_title = "blocked" // change if you'd prefer a different term
+var time_frame = 30 // number of days ahead to check and create blocks from
+var skip_weekends = "yes" // change to no if you want to include weekends
+/* *************************************************************************** */
+
+// creates time blocks on a primary calendar based off of events on a secondary calendar
+function cal_sync() {
+  // get events lists from both calendars for the given time frame
+  var secondary_events = get_events(secondary_id, time_frame);
+  var primary_events = get_events(primary_id, time_frame);
+
+  // iterate through all returned events on secondary calendar
+  for (event in secondary_events) {
+    var import_event = secondary_events[event];
+    var day = import_event.getStartTime().getDay();
+
+    // skip all day events & skip weekends if skip_weekends is "yes".  Don't create a block if already busy.
+    if (import_event.isAllDayEvent() == false && get_interval(skip_weekends) && is_busy(primary_id,import_event.getStartTime(),import_event.getEndTime()) != "busy") {
+      var create_event = CalendarApp.getCalendarById(primary_id).createEvent(event_title,import_event.getStartTime(),import_event.getEndTime());
+      create_event.removeAllReminders(); //prevents double reminders.  Comment this out if you want reminders on primary cal
+    }
+  }
+  orphan_cleanup(primary_events);
+}
+
+// gets all events for a given calendar and time frame
+function get_events(calendar_id, time_frame) {
+  var today = new Date();
+  var end_date = new Date();
+  end_date.setDate(today.getDate() + time_frame);
+  return CalendarApp.getCalendarById(calendar_id).getEvents(today, end_date);
+}
+
+// sets interval to include or skip weekends based on skip_weekends
+function get_interval(skip_weekends) {
+  if (skip_weekends == "yes") {
+    return "(day != 6 || day != 7)";
+  }
+  return "(day != 0)";
+}
+
+// check if time slot is busy on a given calendar
+function is_busy(calendar_id,start_time,end_time){
+  // this block is the json payload to query free/busy from gcal api
+  var event_time = {
+    "timeMin":start_time.toISOString(),
+    "timeMax":end_time.toISOString(),
+    "items":[{"id": calendar_id}]
+  }
+  
+  if (Calendar.Freebusy.query(event_time).calendars[calendar_id]["busy"].length == 0)
+    return;
+  return "busy";
+}
+
+// cleanup orphaned events on desired calendar
+function orphan_cleanup(primary_events) {
+
+  for (event in primary_events) {
+    // var to store potential orphans
+    orphan = primary_events[event];
+
+    // for all blocked events in primary calendar check that time slot returns "busy" from secondary calendar. If not delete oprphaned event
+    if (orphan.getTitle() == event_title && is_busy(secondary_id,orphan.getStartTime(),orphan.getEndTime()) != "busy") {
+      delete_orphan = CalendarApp.getCalendarById(primary_id).getEventById(orphan.getId()).deleteEvent();
+    }
+  }
+}
