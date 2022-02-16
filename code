@@ -17,12 +17,22 @@ function cal_sync() {
     var import_event = secondary_events[event];
     var day = import_event.getStartTime().getDay();
 
-    // skip all day events & skip weekends if skip_weekends is "yes".  Don't create a block if already busy.
-    if (import_event.isAllDayEvent() == false && get_interval(skip_weekends) && is_busy(primary_id,import_event.getStartTime(),import_event.getEndTime()) != "busy") {
-      var create_event = CalendarApp.getCalendarById(primary_id).createEvent(event_title,import_event.getStartTime(),import_event.getEndTime());
-      create_event.removeAllReminders(); //prevents double reminders.  Comment this out if you want reminders on primary cal
+    // skip all day events & weekends if skip_weekends is "yes"
+    try {
+      if (import_event.isAllDayEvent() == false && get_interval(skip_weekends) && is_busy(primary_id, import_event.getStartTime(), import_event.getEndTime()) != "busy") {
+        var create_event = CalendarApp.getCalendarById(primary_id).createEvent(event_title, import_event.getStartTime(), import_event.getEndTime());
+        create_event.removeAllReminders(); //prevents double reminders.  Comment this out if you want reminders on primary cal
+      }
+    }
+    catch (err) {
+      console.log(err)
+      console.log(is_busy(primary_id, import_event.getStartTime(), import_event.getEndTime()))
+    }
+    finally {
+      continue;
     }
   }
+  // remove any orphaned blocked events from primary calendar if original event has been modified
   orphan_cleanup(primary_events);
 }
 
@@ -35,22 +45,22 @@ function get_events(calendar_id, time_frame) {
 }
 
 // sets interval to include or skip weekends based on skip_weekends
-function get_interval(skip_weekends) {
-  if (skip_weekends == "yes") {
+function get_interval(yes_no) {
+  if (yes_no == "yes") {
     return "(day != 6 || day != 7)";
   }
   return "(day != 0)";
 }
 
 // check if time slot is busy on a given calendar
-function is_busy(calendar_id,start_time,end_time){
+function is_busy(calendar_id, start_time, end_time) {
   // this block is the json payload to query free/busy from gcal api
   var event_time = {
-    "timeMin":start_time.toISOString(),
-    "timeMax":end_time.toISOString(),
-    "items":[{"id": calendar_id}]
+    "timeMin": start_time.toISOString(),
+    "timeMax": end_time.toISOString(),
+    "items": [{ "id": calendar_id }]
   }
-  
+
   if (Calendar.Freebusy.query(event_time).calendars[calendar_id]["busy"].length == 0)
     return;
   return "busy";
@@ -58,14 +68,21 @@ function is_busy(calendar_id,start_time,end_time){
 
 // cleanup orphaned events on desired calendar
 function orphan_cleanup(primary_events) {
+  try {
+    for (event in primary_events) {
+      // var to store potential orphans
+      orphan = primary_events[event];
 
-  for (event in primary_events) {
-    // var to store potential orphans
-    orphan = primary_events[event];
-
-    // for all blocked events in primary calendar check that time slot returns "busy" from secondary calendar. If not delete oprphaned event
-    if (orphan.getTitle() == event_title && is_busy(secondary_id,orphan.getStartTime(),orphan.getEndTime()) != "busy") {
-      delete_orphan = CalendarApp.getCalendarById(primary_id).getEventById(orphan.getId()).deleteEvent();
+      // for all blocked events in primary calendar check that time slot returns "busy" from secondary calendar. If not delete oprphaned event
+      if (orphan.getTitle() == event_title && is_busy(secondary_id, orphan.getStartTime(), orphan.getEndTime()) != "busy") {
+        delete_orphan = CalendarApp.getCalendarById(primary_id).getEventById(orphan.getId()).deleteEvent();
+      }
     }
+  }
+  catch (err) {
+    console.log(err)
+  }
+  finally {
+    return;
   }
 }
