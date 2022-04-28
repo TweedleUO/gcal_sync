@@ -87,7 +87,7 @@ function is_busy(calendar_id, start_time, end_time) {
     "items": [{ "id": calendar_id }]
   }
 
-  if (Calendar.Freebusy.query(event_time).calendars[calendar_id]["busy"].length == 0)
+  if (start_time.getTime()==end_time.getTime() || Calendar.Freebusy.query(event_time).calendars[calendar_id]["busy"].length == 0)
     return;
   return "busy";
 }
