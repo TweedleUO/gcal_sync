@@ -4,7 +4,7 @@ var secondary_id = "XXXXX"   // This is the calendar you want to pull events fro
 var event_title = "blocked from ___" // change this to reflect your source calendar name
 var time_frame = 30 // number of days ahead to check and create blocks from
 var skip_weekends = "yes" // change to no if you want to include weekends
-var double_book_events = "yes" // if you want to push an event to your primary calendar even if you are already busy change to "yes"
+var double_book_events = "no" // if you want to push an event to your primary calendar even if you are already busy change to "yes"
 var enable_primary_reminder = "no" // change to "yes" if you want reminder notificaitons on your primary calendar
 /* *************************************************************************** */
 
