@@ -1,9 +1,11 @@
 /* ************* Edit these variables to reflect your preferences ************ */
 var primary_id = "XXXXX"   // This is the calendar you want to create blocks on (usually your email address)
 var secondary_id = "XXXXX"   // This is the calendar you want to pull events from (usually your email address)
-var event_title = "blocked" // change if you'd prefer a different term
+var event_title = "blocked from ___" // change this to reflect your source calendar name
 var time_frame = 30 // number of days ahead to check and create blocks from
 var skip_weekends = "yes" // change to no if you want to include weekends
+var double_book_events = "yes" // if you want to push an event to your primary calendar even if you are already busy change to "yes"
+var enable_primary_reminder = "no" // change to "yes" if you want reminder notificaitons on your primary calendar
 /* *************************************************************************** */
 
 // creates time blocks on a primary calendar based off of events on a secondary calendar
@@ -11,17 +13,34 @@ function cal_sync() {
   // get events lists from both calendars for the given time frame
   var secondary_events = get_events(secondary_id, time_frame);
   var primary_events = get_events(primary_id, time_frame);
+  var blocked_events_list = [];
+  // list of blocked events we have already created
+  for (event in primary_events) {
+    if (primary_events[event].getTitle() == event_title) {
+      blocked_events_list.push(primary_events[event])
+    }
+  }
 
   // iterate through all returned events on secondary calendar
   for (event in secondary_events) {
     var import_event = secondary_events[event];
-    var day = import_event.getStartTime().getDay();
-
-    // skip all day events & weekends if skip_weekends is "yes"
     try {
-      if (import_event.isAllDayEvent() == false && get_interval(skip_weekends) && is_busy(primary_id, import_event.getStartTime(), import_event.getEndTime()) != "busy") {
-        var create_event = CalendarApp.getCalendarById(primary_id).createEvent(event_title, import_event.getStartTime(), import_event.getEndTime());
-        create_event.removeAllReminders(); //prevents double reminders.  Comment this out if you want reminders on primary cal
+      if (double_book_events == "no") {
+        if (import_event.isAllDayEvent() == false && get_interval(skip_weekends) && is_busy(primary_id, import_event.getStartTime(), import_event.getEndTime()) != "busy") {
+          create_event(primary_id, event_title, import_event.getStartTime(), import_event.getEndTime());
+        }
+      }
+      else if (double_book_events == "yes") {
+        if (import_event.isAllDayEvent() == false && get_interval(skip_weekends)) {
+          if (is_busy(primary_id, import_event.getStartTime(), import_event.getEndTime()) == "busy") {
+            if (start_time_match(blocked_events_list, import_event.getStartTime()) == false) {
+              create_event(primary_id, event_title, import_event.getStartTime(), import_event.getEndTime());
+            }
+          }
+          else {
+            create_event(primary_id, event_title, import_event.getStartTime(), import_event.getEndTime());
+          }
+        }
       }
     }
     catch (err) {
@@ -34,6 +53,13 @@ function cal_sync() {
   }
   // remove any orphaned blocked events from primary calendar if original event has been modified
   orphan_cleanup(primary_events);
+}
+
+function create_event(calendar_id, title, start_time, end_time) {
+  new_event = CalendarApp.getCalendarById(calendar_id).createEvent(title, start_time, end_time)
+  if (enable_primary_reminder == "no") {
+    new_event.removeAllReminders();
+  }
 }
 
 // gets all events for a given calendar and time frame
@@ -84,5 +110,27 @@ function orphan_cleanup(primary_events) {
   }
   finally {
     return;
+  }
+}
+
+// find blocked event starttime match
+function start_time_match(list, start_time) {
+  var date_check = new Date(start_time)
+  for (event in list) {
+    if (list[event].getStartTime().getTime() == start_time.getTime()) {
+      console.log("true")
+      return true;
+    }
+  }
+  return false;
+}
+
+// delete all blocks.  Use this if troubleshooting and you need to remove all created events
+function remove_all_created_events() {
+  var primary_events = get_events(primary_id, time_frame);
+  for (event in primary_events) {
+    if (primary_events[event].getTitle() == event_title) {
+      delete_block_event = CalendarApp.getCalendarById(primary_id).getEventById(primary_events[event].getId()).deleteEvent();
+    }
   }
 }
