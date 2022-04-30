@@ -29,7 +29,7 @@ function cal_sync() {
   }
 
   delete_events(find_orphans(blocked_events_list, secondary_events_list));
-
+  
 }
 
 // hits free/busy api to see if calendar is busy for a given time
@@ -68,6 +68,9 @@ function booking(blocked_events, secondary_events) {
   else if (double_book_events == "no") {
     // for every event in secondary calendar first add all day events if appropriate, then check if calendar is busy, if not add to booking list 
     for (event in secondary_events) {
+      if (skip_weekends == "yes" && secondary_events[event].day == (6 || 7)) {
+        continue;
+      }
       if (secondary_events[event].all_day == true && skip_all_day_events == "no") {
         for (b_event in blocked_events) {
           if (blocked_events[b_event].all_day == true && blocked_events[b_event].start_time.getDay() == secondary_events[event].start_time.getDay()) {
@@ -87,18 +90,10 @@ function booking(blocked_events, secondary_events) {
       }
     }
   }
-  // final blocks to clean booking list based on global preferences
-  if (skip_weekends == "yes") {
-    for (event in booking_list) {
-      if (booking_list[event].day == 6 || booking_list[event].day == 7) {
-        booking_list.splice(event, 1);
-      }
-    }
-  }
   if (skip_all_day_events == "yes") {
     for (event in booking_list) {
       if (booking_list[event].all_day == true) {
-        booking_list.splice(event, 1);
+        booking_list.splice(event);
       }
     }
   }
@@ -107,16 +102,12 @@ function booking(blocked_events, secondary_events) {
 
 // pass an event object, create an event on the primary calendar
 function create_event(event) {
-  if (event.all_day == true) {
-    new_event = CalendarApp.getCalendarById(primary_cal_id).createAllDayEvent(event_title, new Date(event.start_time), new Date(event.end_time));
-  }
-  else {
-    new_event = CalendarApp.getCalendarById(primary_cal_id).createEvent(event_title, new Date(event.start_time), new Date(event.end_time));
-  }
-  if (enable_primary_reminder == "no") {
-    new_event.removeAllReminders();
-  }
-  return;
+    if (event.all_day == true) {
+      return CalendarApp.getCalendarById(primary_cal_id).createAllDayEvent(event_title, new Date(event.start_time), new Date(event.end_time)).removeAllReminders();
+    }
+    else {
+      return CalendarApp.getCalendarById(primary_cal_id).createEvent(event_title, new Date(event.start_time), new Date(event.end_time)).removeAllReminders();
+    }
 }
 
 // pass a list of event objects to delete
@@ -157,20 +148,6 @@ function get_event_list(calendar_id, number_of_days) {
   for (event in events) {
     event_list.push({ "calendar_id": calendar_id, "event_id": events[event].getId(), "title": events[event].getTitle(), "day": events[event].getStartTime().getDay(), "start_time": events[event].getStartTime(), "end_time": events[event].getEndTime(), "all_day": events[event].isAllDayEvent() })
   }
-  /* if (skip_weekends == "yes") {
-     for (event in event_list) {
-       if (event_list[event].day == 6 || event_list[event].day == 7) {
-         event_list.splice(event,1);
-       }
-     }
-   }
-   if (skip_all_day_events == "yes") {
-     for (event in event_list) {
-       if (event_list[event].all_day == true) {
-         event_list.splice(event,1);
-       }
-     }
-   }*/
   return event_list;
 }
 
