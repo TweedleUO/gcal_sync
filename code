@@ -30,7 +30,7 @@ function cal_sync() {
   }
 
   delete_events(find_orphans(blocked_events_list, secondary_events_list));
-  
+
 }
 
 // hits free/busy api to see if calendar is busy for a given time
@@ -52,6 +52,9 @@ function booking(blocked_events, secondary_events) {
   if (double_book_events == "yes") {
     // for every event in secondary calendar search for a blocked event in primary calendar that matches.  If no match add to the booking list
     for (event in secondary_events) {
+        if (skip_weekends == "yes" && (secondary_events[event].day == 6 || secondary_events[event].day == 0)) {
+        continue;
+      }
       for (b_event in blocked_events) {
         if (blocked_events[b_event].start_time.getTime() == secondary_events[event].start_time.getTime() && blocked_events[b_event].end_time.getTime() == secondary_events[event].end_time.getTime()) {
           var match_found = 1
@@ -69,7 +72,7 @@ function booking(blocked_events, secondary_events) {
   else if (double_book_events == "no") {
     // for every event in secondary calendar first add all day events if appropriate, then check if calendar is busy, if not add to booking list 
     for (event in secondary_events) {
-      if (skip_weekends == "yes" && secondary_events[event].day == (6 || 7)) {
+      if (skip_weekends == "yes" && (secondary_events[event].day == 6 || secondary_events[event].day == 0)) {
         continue;
       }
       if (secondary_events[event].all_day == true && skip_all_day_events == "no") {
@@ -103,7 +106,6 @@ function booking(blocked_events, secondary_events) {
 
 // pass an event object, create an event on the primary calendar
 function create_event(event) {
-  console.log(event)
   new_event_body = {
     'start': {
       'dateTime': event.start_time.toISOString(),
