@@ -7,6 +7,7 @@ var skip_weekends = "yes"; // change to no if you want to include weekends
 var skip_all_day_events = "no"; // change if you want to import all day blocks
 var double_book_events = "yes"; // if you want to push an event to your primary calendar even if you are already busy change to "yes"
 var enable_primary_reminder = "no"; // change to "yes" if you want reminder notificaitons on your primary calendar
+(for reminders to be properly removed, this script needs to be run under the account of the primary calendar)
 /* *************************************************************************** */
 
 // Global event list variables.  We query the api to get a list for each calendar
