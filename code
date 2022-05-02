@@ -102,12 +102,21 @@ function booking(blocked_events, secondary_events) {
 
 // pass an event object, create an event on the primary calendar
 function create_event(event) {
-    if (event.all_day == true) {
-      return CalendarApp.getCalendarById(primary_cal_id).createAllDayEvent(event_title, new Date(event.start_time), new Date(event.end_time)).removeAllReminders();
-    }
-    else {
-      return CalendarApp.getCalendarById(primary_cal_id).createEvent(event_title, new Date(event.start_time), new Date(event.end_time)).removeAllReminders();
-    }
+  console.log(event)
+  new_event_body = {
+    'start': {
+      'dateTime': event.start_time.toISOString(),
+    },
+    'end': {
+      'dateTime': event.end_time.toISOString(),
+    },
+    'summary': event_title
+  }
+  
+ if (enable_primary_reminder == "no"){
+    new_event_body = { ...new_event_body, reminders: { useDefault: false}};
+  }
+  return Calendar.Events.insert(new_event_body,primary_cal_id);
 }
 
 // pass a list of event objects to delete
