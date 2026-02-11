@@ -1,187 +1,585 @@
-/* ************* Edit these variables to reflect your preferences ************ */
-var primary_cal_id = "XXXXX";   // This is the calendar you want to create blocks on (usually your email address)
-var secondary_cal_id = "XXXXX";   // This is the calendar you want to pull events from (usually your email address)
-var event_title = "blocked from ___"; // change if you'd prefer a different term
-var time_frame = 30; // number of days ahead to check and create blocks from
-var skip_weekends = "yes"; // change to no if you want to include weekends
-var skip_all_day_events = "no"; // change if you want to import all day blocks
-var double_book_events = "yes"; // if you want to push an event to your primary calendar even if you are already busy change to "yes"
-var enable_primary_reminder = "no"; // change to "yes" if you want reminder notificaitons on your primary calendar
-(for reminders to be properly removed, this script needs to be run under the account of the primary calendar)
-/* *************************************************************************** */
+/**
+ * Calendar Busy-Only Sync (Apps Script)
+ *
+ * - Creates/updates "blocked" events on a target calendar based on "busy" time from source calendars
+ * - Uses extendedProperties.private to strongly tag ownership and ensure idempotent upserts
+ * - Optional "no double booking" mode via Freebusy (only insert if target is free)
+ *
+ * Advanced Google Calendar API must be enabled in Apps Script:
+ *  - Services -> Advanced Google services -> Calendar API (ON)
+ *  - Google Cloud console -> Calendar API (ON)
+ */
 
-// Global event list variables.  We query the api to get a list for each calendar
-var primary_events_list = get_event_list(primary_cal_id, time_frame);
-var secondary_events_list = get_event_list(secondary_cal_id, time_frame);
-var blocked_events_list = []
-for (event in primary_events_list) {
-  if (primary_events_list[event].title == event_title) {
-    blocked_events_list.push(primary_events_list[event]);
+/** =========================
+ *  USER CONFIGURATION
+ *  ========================= */
+const CONFIG = {
+  // First calendar is the target; the rest are sources. example: myname@gmail.com
+  calendarIds: [
+    "XXXXXXX",
+    "XXXXXXX",
+    "XXXXXXX"
+  ],
+
+  // How far ahead to sync (rolling window).
+  timeFrameDays: 30,
+
+  // Filters
+  skipWeekends: true,
+  skipAllDayEvents: false,
+
+  /**
+   * If true:
+   *   - Always mirror busy blocks from sources into the target, even if target already has events
+   * If false:
+   *   - Only insert timed blocks when target is currently free (uses Freebusy)
+   */
+  doubleBookEvents: true,
+
+  // If false, blocks have no default reminders
+  enablePrimaryReminder: false,
+
+  // Ownership marker (do not touch events without this)
+  managedBy: "gcal-sync",
+
+  // Safety switch
+  dryRun: true,
+
+  // Constant title to reduce churn
+  blockTitle: "blocked",
+
+  // Retry / backoff behavior for rate limits / transient errors
+  retry: {
+    maxAttempts: 6,
+    initialDelayMs: 300,
+    maxDelayMs: 8000,
+    jitterMs: 150
   }
-}
+};
 
-// main logic block to find events to create and delete
-function cal_sync() {
-  var events_to_create = booking(blocked_events_list, secondary_events_list);
-  if (events_to_create.length != 0) {
-    for (event in events_to_create) {
-      create_event(events_to_create[event]);
+/** =========================
+ *  ENTRY POINT
+ *  ========================= */
+function calSync() {
+  const runId = `${new Date().toISOString()}:${Math.random().toString(16).slice(2)}`;
+  const log = createLogger(runId);
+
+  const targetCalId = CONFIG.calendarIds[0];
+  const sourceCalIds = CONFIG.calendarIds.slice(1);
+  const scriptTz = Session.getScriptTimeZone() || "UTC";
+
+  const { timeMinISO, timeMaxISO } = computeWindow(CONFIG.timeFrameDays);
+
+  log.info("Starting sync", {
+    targetCalId,
+    sourceCount: sourceCalIds.length,
+    timeMinISO,
+    timeMaxISO,
+    dryRun: CONFIG.dryRun,
+    doubleBookEvents: CONFIG.doubleBookEvents
+  });
+
+  // 1) Build desired "blocked" events from all source calendars
+  const desiredByKey = new Map(); // srcKey -> { body, sig, meta }
+  let timedInsertCandidates = 0;
+
+  for (const srcCalId of sourceCalIds) {
+    const srcEvents = listAllEvents(srcCalId, timeMinISO, timeMaxISO);
+
+    for (const srcEvent of srcEvents) {
+      const normalized = normalizeSourceEvent(srcEvent);
+      if (!normalized) continue;
+
+      // Ignore "Free" events
+      if (normalized.transparency === "transparent") continue;
+
+      // Apply filters
+      if (CONFIG.skipWeekends && isWeekend(normalized)) continue;
+      if (normalized.allDay && CONFIG.skipAllDayEvents) continue;
+
+      const srcKey = buildSrcKey(srcCalId, srcEvent, normalized);
+
+      const blockBody = buildBlockBody({
+        scriptTz,
+        srcKey,
+        managedBy: CONFIG.managedBy,
+        title: CONFIG.blockTitle,
+
+        allDay: normalized.allDay,
+        start: normalized.start,
+        end: normalized.end,
+        startDate: normalized.startDate,
+        endDate: normalized.endDate,
+
+        enablePrimaryReminder: CONFIG.enablePrimaryReminder,
+
+        // diagnostics (not used for signature ownership, just helpful for debugging)
+        srcCalId,
+        srcEventId: srcEvent.id || "",
+        srcRecurringEventId: srcEvent.recurringEventId || "",
+        srcICalUID: srcEvent.iCalUID || ""
+      });
+
+      const sig = computeSig(blockBody);
+
+      desiredByKey.set(srcKey, {
+        body: blockBody,
+        sig,
+        meta: { srcCalId, summary: srcEvent.summary || "", eventId: srcEvent.id || "" }
+      });
+
+      if (!CONFIG.doubleBookEvents && !normalized.allDay) {
+        timedInsertCandidates++;
+      }
     }
   }
 
-  delete_events(find_orphans(blocked_events_list, secondary_events_list));
+  log.info("Desired state built", { desiredCount: desiredByKey.size });
 
-}
+  // 2) Load existing managed blocks from target calendar
+  const existingByKey = new Map(); // srcKey -> eventResource
+  const existingManaged = listAllEvents(targetCalId, timeMinISO, timeMaxISO).filter(isManagedBlock);
 
-// hits free/busy api to see if calendar is busy for a given time
-function check_busy_status(calendar_id, start_time, end_time) {
-  var event_time = {
-    "timeMin": start_time.toISOString(),
-    "timeMax": end_time.toISOString(),
-    "items": [{ "id": calendar_id }]
+  for (const e of existingManaged) {
+    const srcKey = getSrcKeyFromManagedEvent(e);
+    if (srcKey) existingByKey.set(srcKey, e);
   }
-  if (start_time.getTime() == end_time.getTime() || Calendar.Freebusy.query(event_time).calendars[calendar_id]["busy"].length == 0) {
-    return "free";
-  }
-  return "busy";
-}
 
-// booking function builds a list of events to be created based on the user preference variables
-function booking(blocked_events, secondary_events) {
-  booking_list = []
-  if (double_book_events == "yes") {
-    // for every event in secondary calendar search for a blocked event in primary calendar that matches.  If no match add to the booking list
-    for (event in secondary_events) {
-        if (skip_weekends == "yes" && (secondary_events[event].day == 6 || secondary_events[event].day == 0)) {
-        continue;
-      }
-      for (b_event in blocked_events) {
-        if (blocked_events[b_event].start_time.getTime() == secondary_events[event].start_time.getTime() && blocked_events[b_event].end_time.getTime() == secondary_events[event].end_time.getTime()) {
-          var match_found = 1
-          break;
+  log.info("Existing managed blocks indexed", {
+    existingManagedCount: existingManaged.length,
+    indexedCount: existingByKey.size
+  });
+
+  // 2.5) Load free/busy only if we need it
+  const busyRanges =
+    (!CONFIG.doubleBookEvents && timedInsertCandidates > 0)
+      ? getBusyRanges(targetCalId, timeMinISO, timeMaxISO, log)
+      : null;
+
+  // 3) Upsert blocks: insert missing + patch changed
+  let inserts = 0, patches = 0, deletes = 0, skips = 0, sigOnlyPatches = 0;
+
+  for (const [srcKey, desired] of desiredByKey.entries()) {
+    const existing = existingByKey.get(srcKey);
+
+    // A) Insert
+    if (!existing) {
+      // If "no double booking", only insert timed blocks if target is currently free
+      if (!CONFIG.doubleBookEvents && busyRanges && isTimedEvent(desired.body)) {
+        const startISO = desired.body.start.dateTime;
+        const endISO = desired.body.end.dateTime;
+        if (rangesOverlapAny(busyRanges, startISO, endISO)) {
+          skips++;
+          continue;
         }
-        else {
-          var match_found = 0
-        }
       }
-      if (match_found == 0 || blocked_events.length == 0) {
-        booking_list.push(secondary_events[event]);
+
+      inserts++;
+      if (!CONFIG.dryRun) {
+        withRetry(() => Calendar.Events.insert(desired.body, targetCalId), "Events.insert");
+      }
+      continue;
+    }
+
+    // B) Skip if signature matches exactly
+    const existingSig = getExistingSig(existing);
+    if (existingSig && existingSig === desired.sig) {
+      skips++;
+      continue;
+    }
+
+    // C) If no sig exists (older records / manual edits), diff conservatively.
+    // If the event matches, patch only the sig once to "graduate" it to signature-based skipping.
+    if (!existingSig && !eventDiffers(existing, desired.body)) {
+      skips++;
+      sigOnlyPatches++;
+      if (!CONFIG.dryRun) {
+        withRetry(
+          () => Calendar.Events.patch(
+            { extendedProperties: { private: { sig: desired.sig } } },
+            targetCalId,
+            existing.id
+          ),
+          "Events.patch(sig-only)"
+        );
+      }
+      continue;
+    }
+
+    // D) Patch full managed payload
+    patches++;
+    if (!CONFIG.dryRun) {
+      const patchBody = minimalPatchBody(desired.body);
+      withRetry(() => Calendar.Events.patch(patchBody, targetCalId, existing.id), "Events.patch");
+    }
+  }
+
+  // 4) Delete orphaned managed blocks on target (present before, not desired now)
+  for (const [srcKey, existing] of existingByKey.entries()) {
+    if (!desiredByKey.has(srcKey)) {
+      deletes++;
+      if (!CONFIG.dryRun) {
+        withRetry(() => Calendar.Events.remove(targetCalId, existing.id), "Events.remove");
       }
     }
   }
-  else if (double_book_events == "no") {
-    // for every event in secondary calendar first add all day events if appropriate, then check if calendar is busy, if not add to booking list 
-    for (event in secondary_events) {
-      if (skip_weekends == "yes" && (secondary_events[event].day == 6 || secondary_events[event].day == 0)) {
-        continue;
-      }
-      if (secondary_events[event].all_day == true && skip_all_day_events == "no") {
-        for (b_event in blocked_events) {
-          if (blocked_events[b_event].all_day == true && blocked_events[b_event].start_time.getDay() == secondary_events[event].start_time.getDay()) {
-            var all_day_match = 1;
-            break;
-          }
-          else {
-            var all_day_match = 0;
-          }
-        }
-        if (all_day_match == 0) {
-          booking_list.push(secondary_events[event]);
-        }
-      }
-      else if (check_busy_status(primary_cal_id, secondary_events[event].start_time, secondary_events[event].end_time) == "free" && secondary_events[event].all_day == false) {
-        booking_list.push(secondary_events[event]);
-      }
-    }
-  }
-  if (skip_all_day_events == "yes") {
-    for (event in booking_list) {
-      if (booking_list[event].all_day == true) {
-        booking_list.splice(event);
-      }
-    }
-  }
-  return booking_list;
+
+  log.info("Sync complete", { inserts, patches, sigOnlyPatches, deletes, skips });
 }
 
-// pass an event object, create an event on the primary calendar
-function create_event(event) {
-  new_event_body = {
-    'start': {
-      'dateTime': event.start_time.toISOString(),
-    },
-    'end': {
-      'dateTime': event.end_time.toISOString(),
-    },
-    'summary': event_title
-  }
-  
- if (enable_primary_reminder == "no"){
-    new_event_body = { ...new_event_body, reminders: { useDefault: false}};
-  }
-  return Calendar.Events.insert(new_event_body,primary_cal_id);
+/** =========================
+ *  WINDOW HELPERS
+ *  ========================= */
+function computeWindow(daysForward) {
+  const timeMin = new Date();
+  const timeMax = new Date();
+  timeMax.setDate(timeMin.getDate() + daysForward);
+
+  return {
+    timeMinISO: timeMin.toISOString(),
+    timeMaxISO: timeMax.toISOString()
+  };
 }
 
-// pass a list of event objects to delete
-function delete_events(event_list) {
-  for (event in event_list) {
-    CalendarApp.getCalendarById(event_list[event].calendar_id).getEventById(event_list[event].event_id).deleteEvent();
-  }
-  return;
+function isTimedEvent(eventBody) {
+  return !!(eventBody && eventBody.start && eventBody.start.dateTime);
 }
 
-// find created "blocked" events that are no longer accurate and delete them
-function find_orphans(blocked_events, secondary_events) {
-  orphan_list = []
-  for (b_event in blocked_events) {
-    for (event in secondary_events) {
-      if (blocked_events[b_event].start_time.getTime() == secondary_events[event].start_time.getTime() && blocked_events[b_event].end_time.getTime() == secondary_events[event].end_time.getTime()) {
-        var match_found = 1
-        break;
+/** =========================
+ *  RETRY / BACKOFF
+ *  ========================= */
+function withRetry(fn, label) {
+  const { maxAttempts, initialDelayMs, maxDelayMs, jitterMs } = CONFIG.retry;
+  let delay = initialDelayMs;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return fn();
+    } catch (e) {
+      const msg = (e && e.message) ? e.message : String(e);
+
+      const retryable =
+        /429|Rate Limit|rateLimitExceeded|userRateLimitExceeded|backendError|Internal error|503|Service unavailable|Service invoked too many times/i
+          .test(msg);
+
+      if (!retryable || attempt === maxAttempts) {
+        throw new Error(`${label} failed (attempt ${attempt}/${maxAttempts}): ${msg}`);
       }
-      else {
-        var match_found = 0
-      }
-    }
-    if (match_found == 0) {
-      orphan_list.push(blocked_events[b_event]);
-    }
-  }
-  return orphan_list;
-}
 
-// build a list of events on a given calendar for a given time frame
-function get_event_list(calendar_id, number_of_days) {
-  var time_min = new Date();
-  var time_max = new Date();
-  time_max.setDate(time_min.getDate() + number_of_days)
-  var events = CalendarApp.getCalendarById(calendar_id).getEvents(new Date(time_min), new Date(time_max));
-  var event_list = [];
-  for (event in events) {
-    event_list.push({ "calendar_id": calendar_id, "event_id": events[event].getId(), "title": events[event].getTitle(), "day": events[event].getStartTime().getDay(), "start_time": events[event].getStartTime(), "end_time": events[event].getEndTime(), "all_day": events[event].isAllDayEvent() })
-  }
-  return event_list;
-}
-
-// helper function for removing all created events that match event_title.  Helpful if something goes wrong
-function remove_all_created_events() {
-  var time_min = new Date();
-  var time_max = new Date();
-  time_max.setDate(time_min.getDate() + time_frame)
-  var blocked_events = CalendarApp.getCalendarById(primary_cal_id).getEvents(new Date(time_min), new Date(time_max));
-  for (event in blocked_events) {
-    if (blocked_events[event].getTitle() == event_title) {
-      CalendarApp.getCalendarById(primary_cal_id).getEventById(blocked_events[event].getId()).deleteEvent();
+      // jitter reduces herd collisions under rate limit
+      const jitter = Math.floor(Math.random() * (jitterMs || 0));
+      Utilities.sleep(delay + jitter);
+      delay = Math.min(delay * 2, maxDelayMs);
     }
   }
 }
 
-// helper function for debugging to view global variables
-function console_debug() {
-  console.log("primary events")
-  console.log(primary_events_list)
-  console.log("secondary events")
-  console.log(secondary_events_list)
-  console.log("Orphans List")
-  console.log(find_orphans(blocked_events_list, secondary_events_list))
+/** =========================
+ *  DATA ACCESS
+ *  ========================= */
+function listAllEvents(calId, timeMinISO, timeMaxISO) {
+  const results = [];
+  let pageToken = null;
+
+  do {
+    const resp = withRetry(
+      () => Calendar.Events.list(calId, {
+        timeMin: timeMinISO,
+        timeMax: timeMaxISO,
+        singleEvents: true,
+        orderBy: "startTime",
+        showDeleted: false,
+        maxResults: 2500,
+        pageToken
+      }),
+      "Events.list"
+    );
+
+    if (resp.items && resp.items.length) results.push(...resp.items);
+    pageToken = resp.nextPageToken || null;
+  } while (pageToken);
+
+  return results;
+}
+
+function getBusyRanges(targetCalId, timeMinISO, timeMaxISO, log) {
+  const query = {
+    timeMin: timeMinISO,
+    timeMax: timeMaxISO,
+    items: [{ id: targetCalId }]
+  };
+
+  const resp = withRetry(() => Calendar.Freebusy.query(query), "Freebusy.query");
+  const busy = (resp.calendars && resp.calendars[targetCalId] && resp.calendars[targetCalId].busy) || [];
+
+  log.info("Freebusy window loaded", { busyCount: busy.length });
+  return busy;
+}
+
+/** =========================
+ *  NORMALIZATION & KEYS
+ *  ========================= */
+function normalizeSourceEvent(item) {
+  if (!item || item.status === "cancelled") return null;
+
+  const transparency = item.transparency || "opaque";
+
+  // Timed event
+  if (item.start && item.start.dateTime) {
+    if (!item.end || !item.end.dateTime) return null;
+    return {
+      start: new Date(item.start.dateTime),
+      end: new Date(item.end.dateTime),
+      allDay: false,
+      transparency
+    };
+  }
+
+  // All-day event
+  if (item.start && item.start.date) {
+    if (!item.end || !item.end.date) return null;
+    return {
+      startDate: item.start.date, // YYYY-MM-DD
+      endDate: item.end.date,     // exclusive end date
+      allDay: true,
+      transparency
+    };
+  }
+
+  return null;
+}
+
+function buildSrcKey(calId, item, normalized) {
+  // Recurring instance: recurringEventId + originalStartTime anchor
+  if (item.recurringEventId) {
+    const ost = item.originalStartTime && (item.originalStartTime.dateTime || item.originalStartTime.date);
+    if (ost) return `${calId}|RI|${item.recurringEventId}|${ost}`;
+
+    // Rare fallback: no originalStartTime
+    if (normalized && !normalized.allDay) return `${calId}|RI|${item.recurringEventId}|${normalized.start.toISOString()}`;
+    if (normalized && normalized.allDay) return `${calId}|RI|${item.recurringEventId}|${normalized.startDate}`;
+  }
+
+  // Non-recurring: iCalUID preferred
+  if (item.iCalUID) return `${calId}|UID|${item.iCalUID}`;
+
+  // Fallback: event id
+  return `${calId}|ID|${item.id}`;
+}
+
+function isWeekend(normalized) {
+  if (!normalized.allDay) {
+    const d = normalized.start.getDay();
+    return d === 0 || d === 6;
+  }
+  // All-day: use midday local time to avoid DST weirdness
+  const d = new Date(normalized.startDate + "T12:00:00");
+  const wd = d.getDay();
+  return wd === 0 || wd === 6;
+}
+
+/** =========================
+ *  MANAGED BLOCK DETECTION
+ *  (no legacy support)
+ *  ========================= */
+function isManagedBlock(eventResource) {
+  const p = eventResource.extendedProperties && eventResource.extendedProperties.private;
+  return !!(p && p.managedBy === CONFIG.managedBy && p.srcKey);
+}
+
+function getSrcKeyFromManagedEvent(eventResource) {
+  const p = eventResource.extendedProperties && eventResource.extendedProperties.private;
+  return p && p.srcKey ? String(p.srcKey).trim() : null;
+}
+
+function getExistingSig(eventResource) {
+  const p = eventResource.extendedProperties && eventResource.extendedProperties.private;
+  return p && p.sig ? String(p.sig) : null;
+}
+
+/** =========================
+ *  BLOCK BODY CONSTRUCTION
+ *  ========================= */
+function buildBlockBody({
+  srcKey,
+  managedBy,
+  title,
+  allDay,
+  start,
+  end,
+  startDate,
+  endDate,
+  scriptTz,
+  enablePrimaryReminder,
+
+  // diagnostics
+  srcCalId,
+  srcEventId,
+  srcRecurringEventId,
+  srcICalUID
+}) {
+  const body = {
+    summary: title,
+    description: `srcEventId:${srcKey}`, // informational only
+    extendedProperties: {
+      private: {
+        managedBy,
+        srcKey,
+        sig: "",
+
+        // diagnostics for troubleshooting
+        srcCalId: srcCalId || "",
+        srcEventId: srcEventId || "",
+        srcRecurringEventId: srcRecurringEventId || "",
+        srcICalUID: srcICalUID || ""
+      }
+    }
+  };
+
+  if (allDay) {
+    body.start = { date: startDate };
+    body.end = { date: endDate };
+  } else {
+    body.start = { dateTime: start.toISOString(), timeZone: scriptTz };
+    body.end = { dateTime: end.toISOString(), timeZone: scriptTz };
+  }
+
+  if (!enablePrimaryReminder) body.reminders = { useDefault: false };
+
+  // Store signature inside the event for fast equality checks
+  body.extendedProperties.private.sig = computeSig(body);
+  return body;
+}
+
+function minimalPatchBody(desiredBody) {
+  return {
+    summary: desiredBody.summary,
+    description: desiredBody.description,
+    start: desiredBody.start,
+    end: desiredBody.end,
+    reminders: desiredBody.reminders,
+    extendedProperties: desiredBody.extendedProperties
+  };
+}
+
+/** =========================
+ *  SIGNATURE & DIFF
+ *  ========================= */
+function computeSig(eventBody) {
+  const p = eventBody.extendedProperties && eventBody.extendedProperties.private
+    ? eventBody.extendedProperties.private
+    : {};
+
+  // Signature covers only the fields we care about for idempotence
+  const normalized = {
+    summary: eventBody.summary || "",
+    description: eventBody.description || "",
+    start: eventBody.start || {},
+    end: eventBody.end || {},
+    reminders: eventBody.reminders || null,
+    managedBy: p.managedBy || "",
+    srcKey: p.srcKey || ""
+  };
+
+  const json = JSON.stringify(normalized);
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    json,
+    Utilities.Charset.UTF_8
+  );
+
+  return bytes
+    .map(b => (b + 256) % 256)
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function eventDiffers(existing, desiredBody) {
+  if ((existing.summary || "") !== (desiredBody.summary || "")) return true;
+  if ((existing.description || "") !== (desiredBody.description || "")) return true;
+
+  const exAllDay = !!(existing.start && existing.start.date);
+  const wantAllDay = !!(desiredBody.start && desiredBody.start.date);
+  if (exAllDay !== wantAllDay) return true;
+
+  if (wantAllDay) {
+    if ((existing.start && existing.start.date) !== desiredBody.start.date) return true;
+    if ((existing.end && existing.end.date) !== desiredBody.end.date) return true;
+  } else {
+    if ((existing.start && existing.start.dateTime) !== desiredBody.start.dateTime) return true;
+    if ((existing.end && existing.end.dateTime) !== desiredBody.end.dateTime) return true;
+  }
+
+  const exUseDefault = existing.reminders ? existing.reminders.useDefault : undefined;
+  const wantUseDefault = desiredBody.reminders ? desiredBody.reminders.useDefault : undefined;
+  if (exUseDefault !== wantUseDefault) return true;
+
+  return false;
+}
+
+/** =========================
+ *  BUSY CHECK
+ *  ========================= */
+function rangesOverlapAny(busyRanges, startISO, endISO) {
+  const start = Date.parse(startISO);
+  const end = Date.parse(endISO);
+
+  for (const r of busyRanges) {
+    const bs = Date.parse(r.start);
+    const be = Date.parse(r.end);
+    if (start < be && end > bs) return true;
+  }
+  return false;
+}
+
+/** =========================
+ *  LOGGING
+ *  ========================= */
+function createLogger(runId) {
+  function emit(level, msg, obj) {
+    const payload = Object.assign(
+      { level, runId, msg, ts: new Date().toISOString() },
+      obj || {}
+    );
+    console.log(JSON.stringify(payload));
+  }
+
+  return {
+    info: (msg, obj) => emit("INFO", msg, obj),
+    warn: (msg, obj) => emit("WARN", msg, obj),
+    error: (msg, obj) => emit("ERROR", msg, obj)
+  };
+}
+
+/** =========================
+ *  UTILITIES / MAINTENANCE
+ *  ========================= */
+
+/**
+ * Remove all managed events from the target calendar.
+ * Useful when testing / resetting.
+ */
+function removeAllCreatedEventsFromPrimary() {
+  const targetCalId = CONFIG.calendarIds[0];
+  const timeMinISO = new Date(2000, 0, 1).toISOString();
+  const timeMaxISO = new Date(2100, 0, 1).toISOString();
+
+  const events = listAllEvents(targetCalId, timeMinISO, timeMaxISO).filter(isManagedBlock);
+
+  for (const e of events) {
+    if (!CONFIG.dryRun) {
+      withRetry(() => Calendar.Events.remove(targetCalId, e.id), "Events.remove(cleanup)");
+    }
+  }
+
+  console.log(`Removed ${events.length} managed events from ${targetCalId} (dryRun=${CONFIG.dryRun})`);
+}
+
+/**
+ * Simple sanity check: confirms the Advanced Calendar API is enabled and reachable.
+ */
+function sanityCheckCalendarAdvancedService() {
+  const calId = CONFIG.calendarIds[0];
+  const cal = withRetry(() => Calendar.Calendars.get(calId), "Calendars.get");
+  console.log("Advanced Calendar API OK. Calendar summary:", cal.summary);
 }
