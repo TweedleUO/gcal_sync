@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Calendar Sync Setup</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f9fafb;
+      --surface: #ffffff;
+      --border: #e5e7eb;
+      --text: #111827;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --accent-light: #eff6ff;
+      --accent-border: #bfdbfe;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --warn-bg: #fefce8;
+      --warn-border: #fde68a;
+      --warn-text: #92400e;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .app {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 28px 16px 56px;
+    }
+
+    /* ── Header ────────────────────────────────────────────────────────────── */
+
+    .header { margin-bottom: 28px; }
+    .header h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; }
+    .header p { color: var(--muted); margin-top: 4px; font-size: 13px; }
+
+    /* ── Test banner ───────────────────────────────────────────────────────── */
+
+    .test-banner {
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--warn-text);
+      margin-bottom: 20px;
+      display: none;
+    }
+    .test-banner.visible { display: block; }
+
+    /* ── Section ───────────────────────────────────────────────────────────── */
+
+    .section { margin-bottom: 32px; }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+    }
+
+    /* ── Card ──────────────────────────────────────────────────────────────── */
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .card-header.open { border-bottom: 1px solid var(--border); }
+    .card-name { flex: 1; font-weight: 500; font-size: 14px; }
+    .card-badge {
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+    }
+    .card-chevron { color: var(--muted); transition: transform .15s; flex-shrink: 0; }
+    .card-chevron.open { transform: rotate(180deg); }
+    .card-body { padding: 14px; display: none; }
+    .card-body.open { display: block; }
+
+    /* ── Form elements ─────────────────────────────────────────────────────── */
+
+    .field { margin-bottom: 14px; }
+    .field:last-child { margin-bottom: 0; }
+
+    .label-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 5px;
+    }
+    label { font-size: 13px; font-weight: 500; color: var(--text); }
+
+    input[type="text"], select {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--surface);
+      outline: none;
+      transition: border-color .15s;
+    }
+    input[type="text"]:focus, select:focus { border-color: var(--accent); }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    /* ── Divider ───────────────────────────────────────────────────────────── */
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 16px 0 14px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+    .divider::before, .divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Toggle ────────────────────────────────────────────────────────────── */
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 0;
+    }
+    .toggle-label { display: flex; align-items: center; gap: 5px; font-size: 13px; }
+
+    .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+    .toggle input { display: none; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: #d1d5db;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .toggle input:checked + .toggle-track { background: var(--accent); }
+    .toggle-thumb {
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 16px; height: 16px;
+      background: white;
+      border-radius: 50%;
+      transition: transform .2s;
+      pointer-events: none;
+    }
+    .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
+
+    /* ── Info tooltip ──────────────────────────────────────────────────────── */
+
+    .info {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      background: var(--border);
+      color: var(--muted);
+      border-radius: 50%;
+      font-size: 9px;
+      font-weight: 700;
+      cursor: default;
+      flex-shrink: 0;
+    }
+    .info:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1f2937;
+      color: white;
+      font-size: 11px;
+      font-weight: 400;
+      padding: 6px 9px;
+      border-radius: 5px;
+      white-space: normal;
+      width: 210px;
+      z-index: 100;
+      line-height: 1.45;
+      pointer-events: none;
+    }
+
+    /* ── Mode cards ────────────────────────────────────────────────────────── */
+
+    .mode-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .mode-card {
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .mode-card:hover { border-color: var(--accent-border); }
+    .mode-card.selected { border-color: var(--accent); background: var(--accent-light); }
+    .mode-card-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+    .mode-card-desc { font-size: 11px; color: var(--muted); line-height: 1.35; }
+
+    /* ── Visibility options ────────────────────────────────────────────────── */
+
+    .vis-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px;
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 6px;
+      transition: border-color .15s, background .15s;
+    }
+    .vis-option:hover { border-color: var(--accent-border); }
+    .vis-option.selected { border-color: var(--accent); background: var(--accent-light); }
+    .vis-radio {
+      width: 15px; height: 15px;
+      border: 2px solid var(--border);
+      border-radius: 50%;
+      margin-top: 1px;
+      flex-shrink: 0;
+      position: relative;
+      transition: border-color .15s;
+    }
+    .vis-option.selected .vis-radio { border-color: var(--accent); }
+    .vis-option.selected .vis-radio::after {
+      content: "";
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 7px; height: 7px;
+      background: var(--accent);
+      border-radius: 50%;
+    }
+    .vis-title { font-size: 13px; font-weight: 600; }
+    .vis-desc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+
+    /* ── Note blocks ───────────────────────────────────────────────────────── */
+
+    .note {
+      border-radius: 5px;
+      padding: 8px 10px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .note-warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); }
+    .note-info { background: var(--accent-light); border: 1px solid var(--accent-border); color: #1e40af; }
+
+    /* ── Buttons ───────────────────────────────────────────────────────────── */
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      outline: none;
+      transition: background .15s, opacity .15s;
+      white-space: nowrap;
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+    .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--bg); }
+    .btn-secondary:disabled { opacity: .6; cursor: not-allowed; }
+    .btn-danger { background: var(--surface); color: var(--danger); border: 1px solid var(--border); }
+    .btn-danger:hover { background: #fef2f2; border-color: #fca5a5; }
+    .btn-link {
+      background: none; border: none;
+      color: var(--accent); font-size: 13px; font-weight: 500;
+      cursor: pointer; padding: 2px 0;
+    }
+    .btn-link:hover { color: #1d4ed8; text-decoration: underline; }
+    .btn-ghost-danger {
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); padding: 4px; border-radius: 4px; line-height: 1;
+    }
+    .btn-ghost-danger:hover { color: var(--danger); }
+
+    /* ── Run summary ───────────────────────────────────────────────────────── */
+
+    .run-summary {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-bottom: 16px;
+    }
+    .run-summary-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .run-title { font-size: 13px; font-weight: 600; }
+    .run-ts { font-size: 11px; color: var(--muted); }
+    .run-stats { display: flex; gap: 12px; flex-wrap: wrap; }
+    .run-stat { font-size: 12px; color: var(--muted); }
+    .run-stat b { font-weight: 600; color: var(--text); }
+    .run-log {
+      margin-top: 10px;
+      font-size: 11px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px;
+      max-height: 180px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* ── Actions ───────────────────────────────────────────────────────────── */
+
+    .actions-primary { display: flex; gap: 8px; margin-bottom: 10px; }
+    .actions-secondary { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* ── Empty state ───────────────────────────────────────────────────────── */
+
+    .empty {
+      text-align: center;
+      padding: 24px;
+      color: var(--muted);
+      font-size: 13px;
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+    }
+
+    /* ── Toast ─────────────────────────────────────────────────────────────── */
+
+    .toast {
+      position: fixed;
+      bottom: 20px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1f2937;
+      color: white;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      transition: transform .25s ease;
+      z-index: 200;
+      white-space: nowrap;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.error { background: var(--danger); }
+    .toast.success { background: var(--success); }
+
+    /* ── Spinner ───────────────────────────────────────────────────────────── */
+
+    .spinner {
+      display: inline-block;
+      width: 13px; height: 13px;
+      border: 2px solid rgba(255,255,255,.35);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    .spinner-dark {
+      border-color: rgba(0,0,0,.12);
+      border-top-color: var(--accent);
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <div class="header">
+    <h1>Calendar Sync</h1>
+    <p>Block busy time across your calendars — without sharing private details.</p>
+  </div>
+
+  <div id="test-banner" class="test-banner">
+    Test mode is on — no changes will be written to your calendars.
+  </div>
+
+  <div id="loading" style="color:var(--muted);padding:8px 0;font-size:13px">Loading…</div>
+  <div id="main" style="display:none">
+
+    <!-- ── Calendars ──────────────────────────────────────────────────────── -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Calendars</span>
+        <button class="btn-link" onclick="addCalendar()">+ Add calendar</button>
+      </div>
+      <div id="calendars-list"></div>
+      <div id="calendars-empty" class="empty" style="display:none">
+        No calendars added. Click <strong>+ Add calendar</strong> to get started.
+      </div>
+    </div>
+
+    <!-- ── Sync Rules ─────────────────────────────────────────────────────── -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Sync Rules</span>
+      </div>
+      <div class="mode-cards">
+        <div class="mode-card" data-mode="aggregate" onclick="selectMode('aggregate')">
+          <div class="mode-card-title">Aggregate</div>
+          <div class="mode-card-desc">All calendars sync to one target</div>
+        </div>
+        <div class="mode-card" data-mode="mesh" onclick="selectMode('mesh')">
+          <div class="mode-card-title">Mesh</div>
+          <div class="mode-card-desc">Every calendar shares events with all others</div>
+        </div>
+        <div class="mode-card" data-mode="custom" onclick="selectMode('custom')">
+          <div class="mode-card-title">Custom</div>
+          <div class="mode-card-desc">Define your own sync pairs</div>
+        </div>
+      </div>
+
+      <div id="mode-aggregate" style="display:none">
+        <div class="field">
+          <div class="label-row">
+            <label>Target calendar</label>
+            <span class="info" data-tip="Events from all other calendars will be blocked on this calendar.">i</span>
+          </div>
+          <select id="aggregate-target-select"
+                  onchange="state.config.syncFlows.aggregateTarget = this.value">
+            <option value="">— select a calendar —</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="mode-mesh" style="display:none">
+        <div class="note note-info">
+          Each calendar receives blocked events from all the others. Events created by this sync are never re-synced to prevent chains.
+        </div>
+      </div>
+
+      <div id="mode-custom" style="display:none">
+        <div id="custom-pairs"></div>
+        <button class="btn-link" style="margin-top:6px" onclick="addCustomPair()">+ Add sync pair</button>
+      </div>
+    </div>
+
+    <!-- ── Settings ───────────────────────────────────────────────────────── -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Settings</span>
+      </div>
+      <div class="card">
+        <div class="card-body open" style="display:block">
+
+          <div class="field">
+            <div class="label-row">
+              <label>Sync window</label>
+              <span class="info" data-tip="How far ahead to sync. Longer windows use more API quota.">i</span>
+            </div>
+            <select id="time-frame" onchange="state.config.settings.timeFrameDays = +this.value">
+              <option value="7">7 days</option>
+              <option value="14">14 days</option>
+              <option value="30">30 days</option>
+              <option value="60">60 days</option>
+              <option value="90">90 days</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <div class="label-row">
+              <label>Sync frequency</label>
+              <span class="info" data-tip="How often the sync runs automatically. Daily at midnight is recommended for most users.">i</span>
+            </div>
+            <select id="frequency" onchange="state.config.settings.frequency = this.value">
+              <option value="every15">Every 15 minutes</option>
+              <option value="every30">Every 30 minutes</option>
+              <option value="hourly">Hourly</option>
+              <option value="every4h">Every 4 hours</option>
+              <option value="daily">Daily at midnight (recommended)</option>
+            </select>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-label">
+              <span>Also sync on calendar update</span>
+              <span class="info" data-tip="Triggers a sync whenever a source calendar changes. Combines with the scheduled frequency as a minimum sync interval.">i</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="sync-on-update"
+                     onchange="state.config.settings.syncOnUpdate = this.checked">
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-label">
+              <span>Enable reminders on blocked events</span>
+              <span class="info" data-tip="When off, blocked events have no reminders. Recommended off for most users.">i</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="enable-reminder"
+                     onchange="state.config.settings.enableReminder = this.checked">
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-label">
+              <span>Test mode</span>
+              <span class="info" data-tip="When on, syncs run but nothing is written to your calendars. Turn off when you're ready to go live.">i</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="test-mode"
+                     onchange="state.config.settings.testMode = this.checked; updateTestBanner()">
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Save & Actions ─────────────────────────────────────────────────── -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Save</span>
+      </div>
+
+      <div id="last-run-summary" class="run-summary" style="display:none">
+        <div class="run-summary-row">
+          <span class="run-title">Last run</span>
+          <span class="run-ts" id="run-ts"></span>
+        </div>
+        <div class="run-stats" id="run-stats"></div>
+        <div style="margin-top:8px">
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;font-weight:400">
+            <input type="checkbox" id="show-log" onchange="toggleLog()"> Show full log
+          </label>
+        </div>
+        <div id="run-log" class="run-log" style="display:none"></div>
+      </div>
+
+      <div class="actions-primary">
+        <button class="btn btn-primary" id="save-btn" onclick="saveConfig()">
+          Save &amp; Activate
+        </button>
+        <button class="btn btn-secondary" id="run-now-btn" onclick="runNow()">
+          Run now
+        </button>
+      </div>
+      <div class="actions-secondary">
+        <button class="btn btn-secondary" onclick="showCleanup()">
+          Cleanup selected calendar(s)
+        </button>
+        <button class="btn btn-danger" onclick="confirmReset()">
+          Reset config
+        </button>
+      </div>
+
+      <div id="cleanup-panel" class="card" style="display:none;margin-top:12px">
+        <div class="card-body open" style="display:block">
+          <div class="field">
+            <div class="label-row"><label>Select calendar(s) to clean</label></div>
+            <div id="cleanup-checkboxes" style="margin-top:6px"></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn btn-danger" onclick="runCleanup()">Remove managed blocks</button>
+            <button class="btn btn-secondary" onclick="hideCleanup()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+
+const state = {
+  config: null,
+  calIdCounter: 0
+};
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+document.addEventListener("DOMContentLoaded", () => {
+  google.script.run
+    .withSuccessHandler(init)
+    .withFailureHandler(err => {
+      document.getElementById("loading").textContent = "Failed to load: " + (err.message || err);
+    })
+    .getConfigForSidebar();
+});
+
+function init(config) {
+  state.config = config;
+  state.calIdCounter = config.calendars.length;
+
+  renderCalendars();
+  renderSyncMode();
+  renderSettings();
+  loadRunSummary();
+  updateTestBanner();
+
+  document.getElementById("loading").style.display = "none";
+  document.getElementById("main").style.display = "block";
+}
+
+// ── Calendar Cards ────────────────────────────────────────────────────────────
+
+function renderCalendars() {
+  const list  = document.getElementById("calendars-list");
+  const empty = document.getElementById("calendars-empty");
+  list.innerHTML = "";
+  if (!state.config.calendars.length) {
+    empty.style.display = "block";
+    return;
+  }
+  empty.style.display = "none";
+  state.config.calendars.forEach((cal, i) => list.appendChild(buildCalendarCard(cal, i)));
+  refreshAggregateTargetSelect();
+}
+
+function buildCalendarCard(cal, idx) {
+  const div = document.createElement("div");
+  div.className = "card";
+  div.id = `cal-card-${cal.id}`;
+
+  const badgeLabel = { fullyPrivate: "Fully Private", private: "Private", mirror: "As-Is" };
+  const isMirror   = cal.visibility === "mirror";
+
+  div.innerHTML = `
+    <div class="card-header" id="cal-hdr-${cal.id}" onclick="toggleCard('${cal.id}')">
+      <span class="card-name" id="cal-name-${cal.id}">${esc(cal.name || "Calendar " + (idx + 1))}</span>
+      <span class="card-badge" id="cal-badge-${cal.id}">${badgeLabel[cal.visibility] || "Fully Private"}</span>
+      <svg class="card-chevron" id="cal-chev-${cal.id}" width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <button class="btn-ghost-danger" onclick="removeCalendar(event,'${cal.id}')" title="Remove">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="card-body" id="cal-body-${cal.id}">
+
+      <div class="field">
+        <div class="label-row">
+          <label>Calendar ID or link</label>
+          <span class="info" data-tip="Paste a Google Calendar link or enter the ID directly (e.g. you@gmail.com). Find it in Google Calendar settings under the calendar name.">i</span>
+        </div>
+        <input type="text" value="${esc(cal.calendarId)}"
+               placeholder="you@gmail.com or calendar link"
+               oninput="onCalendarIdInput(this, '${cal.id}')">
+      </div>
+
+      <div class="field">
+        <div class="label-row">
+          <label>Label</label>
+          <span class="info" data-tip="A short name for this calendar, shown in the UI. Leave blank to use the email address.">i</span>
+        </div>
+        <input type="text" value="${esc(cal.name)}" placeholder="e.g. Work, Personal"
+               oninput="onCalendarNameInput(this, '${cal.id}')">
+      </div>
+
+      <div class="divider">When this calendar is a target</div>
+
+      <div class="field">
+        <div class="label-row"><label>Visibility</label></div>
+        ${buildVisOptions(cal)}
+        <div id="vis-sub-${cal.id}" style="margin-top:4px">${buildVisSub(cal)}</div>
+      </div>
+
+      <div class="field" id="block-title-field-${cal.id}" ${isMirror ? 'style="display:none"' : ""}>
+        <div class="label-row">
+          <label>Block title</label>
+          <span class="info" data-tip="Text shown as the event title for blocked events. Defaults to 'Blocked'.">i</span>
+        </div>
+        <input type="text" value="${esc(cal.blockTitle || "Blocked")}" placeholder="Blocked"
+               oninput="updateCalField('${cal.id}', 'blockTitle', this.value)">
+      </div>
+
+      <div class="divider">Target filters</div>
+
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <span>Accept all-day events</span>
+          <span class="info" data-tip="When on, all-day events from source calendars are blocked on this calendar.">i</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" ${cal.acceptAllDayEvents ? "checked" : ""}
+                 onchange="updateCalField('${cal.id}', 'acceptAllDayEvents', this.checked)">
+          <div class="toggle-track"></div><div class="toggle-thumb"></div>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <span>Allow double-booking</span>
+          <span class="info" data-tip="When off, blocks are skipped if the target time slot is already busy.">i</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" ${cal.allowDoubleBooking ? "checked" : ""}
+                 onchange="updateCalField('${cal.id}', 'allowDoubleBooking', this.checked)">
+          <div class="toggle-track"></div><div class="toggle-thumb"></div>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <span>Weekday events only</span>
+          <span class="info" data-tip="When on, weekend events from source calendars are not blocked on this calendar.">i</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" ${cal.weekdayEventsOnly ? "checked" : ""}
+                 onchange="updateCalField('${cal.id}', 'weekdayEventsOnly', this.checked)">
+          <div class="toggle-track"></div><div class="toggle-thumb"></div>
+        </label>
+      </div>
+
+    </div>
+  `;
+
+  if (idx === 0) toggleCard(cal.id, true);
+  return div;
+}
+
+function buildVisOptions(cal) {
+  const opts = [
+    {
+      value: "fullyPrivate",
+      title: "Fully Private",
+      desc: "Only the block title is visible. No details are exposed to anyone, including organization administrators."
+    },
+    {
+      value: "private",
+      title: "Private",
+      desc: "Choose the block title or show the original event title. The event appears busy to others. Note: organization administrators can see the event title."
+    },
+    {
+      value: "mirror",
+      title: "As-Is",
+      desc: "All event details are passed through as-is, including the original privacy settings."
+    }
+  ];
+  return opts.map(o => `
+    <div class="vis-option ${cal.visibility === o.value ? "selected" : ""}"
+         onclick="selectVisibility('${cal.id}', '${o.value}', this)">
+      <div class="vis-radio"></div>
+      <div>
+        <div class="vis-title">${o.title}</div>
+        <div class="vis-desc">${o.desc}</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function buildVisSub(cal) {
+  if (cal.visibility === "private") {
+    return `
+      <div class="toggle-row" style="padding-top:6px">
+        <div class="toggle-label">
+          <span>Show original event title</span>
+          <span class="info" data-tip="When on, the original event title is used instead of the block title. The event is still marked private — note that organization administrators can see the title.">i</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" ${cal.privateShowOriginalTitle ? "checked" : ""}
+                 onchange="updateCalField('${cal.id}', 'privateShowOriginalTitle', this.checked)">
+          <div class="toggle-track"></div><div class="toggle-thumb"></div>
+        </label>
+      </div>
+    `;
+  }
+  if (cal.visibility === "mirror") {
+    return `<div class="note note-warn" style="margin-top:6px">Recurring events become individual instances on the target calendar — the recurrence rule is not carried over.</div>`;
+  }
+  return "";
+}
+
+function selectVisibility(calId, value, el) {
+  const cal = getCalById(calId);
+  if (!cal) return;
+  cal.visibility = value;
+
+  el.closest(".field").querySelectorAll(".vis-option").forEach(o =>
+    o.classList.toggle("selected", o === el)
+  );
+  document.getElementById(`vis-sub-${calId}`).innerHTML = buildVisSub(cal);
+
+  const badgeMap = { fullyPrivate: "Fully Private", private: "Private", mirror: "As-Is" };
+  document.getElementById(`cal-badge-${calId}`).textContent = badgeMap[value] || value;
+
+  const blockTitleField = document.getElementById(`block-title-field-${calId}`);
+  if (blockTitleField) blockTitleField.style.display = value === "mirror" ? "none" : "";
+}
+
+function toggleCard(calId, forceOpen) {
+  const body   = document.getElementById(`cal-body-${calId}`);
+  const header = document.getElementById(`cal-hdr-${calId}`);
+  const chev   = document.getElementById(`cal-chev-${calId}`);
+  const open   = forceOpen !== undefined ? forceOpen : !body.classList.contains("open");
+
+  body.classList.toggle("open", open);
+  body.style.display = open ? "block" : "none";
+  header.classList.toggle("open", open);
+  chev.classList.toggle("open", open);
+}
+
+function addCalendar() {
+  const id = `cal_${++state.calIdCounter}`;
+  const cal = {
+    id, name: "", provider: "google", calendarId: "",
+    blockTitle: "Blocked",
+    visibility: "fullyPrivate",
+    privateShowOriginalTitle: false,
+    weekdayEventsOnly: false,
+    acceptAllDayEvents: true,
+    allowDoubleBooking: true
+  };
+  state.config.calendars.push(cal);
+  document.getElementById("calendars-empty").style.display = "none";
+  const card = buildCalendarCard(cal, state.config.calendars.length - 1);
+  document.getElementById("calendars-list").appendChild(card);
+  toggleCard(id, true);
+  refreshAggregateTargetSelect();
+}
+
+function removeCalendar(evt, calId) {
+  evt.stopPropagation();
+  state.config.calendars = state.config.calendars.filter(c => c.id !== calId);
+  document.getElementById(`cal-card-${calId}`)?.remove();
+  if (!state.config.calendars.length) {
+    document.getElementById("calendars-empty").style.display = "block";
+  }
+  if (state.config.syncFlows.aggregateTarget === calId) {
+    state.config.syncFlows.aggregateTarget = null;
+  }
+  refreshAggregateTargetSelect();
+}
+
+function onCalendarIdInput(input, calId) {
+  const parsed = parseCalendarId(input.value);
+  input.value = parsed;
+  updateCalField(calId, "calendarId", parsed);
+}
+
+function onCalendarNameInput(input, calId) {
+  updateCalField(calId, "name", input.value);
+  document.getElementById(`cal-name-${calId}`).textContent = input.value || "Calendar";
+  refreshAggregateTargetSelect();
+}
+
+function updateCalField(calId, field, value) {
+  const cal = getCalById(calId);
+  if (cal) cal[field] = value;
+}
+
+function getCalById(calId) {
+  return state.config.calendars.find(c => c.id === calId) || null;
+}
+
+// ── Calendar ID Parser ────────────────────────────────────────────────────────
+
+function parseCalendarId(input) {
+  const s = (input || "").trim();
+  if (!s) return s;
+  // Already an email-style ID or "primary"
+  if (/^[^\s@]+@[^\s@]+$/.test(s) || s === "primary") return s;
+  // Try to extract from common Google Calendar URL patterns
+  const fromSrc  = s.match(/[?&]src=([^&\s"']+)/i);
+  if (fromSrc)  return decodeURIComponent(fromSrc[1]);
+  const fromCid  = s.match(/[?&]cid=([^&\s"']+)/i);
+  if (fromCid)  return decodeURIComponent(fromCid[1]);
+  // Extract any email-shaped segment from the URL path (handles encoded @ as %40)
+  const fromPath = s.match(/([a-zA-Z0-9._+-]+(?:%40|@)[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/i);
+  if (fromPath) return decodeURIComponent(fromPath[1]);
+  return s;
+}
+
+// ── Sync Mode ─────────────────────────────────────────────────────────────────
+
+function renderSyncMode() {
+  selectMode(state.config.syncFlows.mode || "aggregate", true);
+}
+
+function selectMode(mode, skipStateUpdate) {
+  if (!skipStateUpdate) state.config.syncFlows.mode = mode;
+
+  document.querySelectorAll(".mode-card").forEach(el =>
+    el.classList.toggle("selected", el.dataset.mode === mode)
+  );
+  document.getElementById("mode-aggregate").style.display = mode === "aggregate" ? "block" : "none";
+  document.getElementById("mode-mesh").style.display      = mode === "mesh"      ? "block" : "none";
+  document.getElementById("mode-custom").style.display    = mode === "custom"    ? "block" : "none";
+
+  if (mode === "aggregate") refreshAggregateTargetSelect();
+  if (mode === "custom")    renderCustomPairs();
+}
+
+function refreshAggregateTargetSelect() {
+  const sel     = document.getElementById("aggregate-target-select");
+  const current = state.config.syncFlows.aggregateTarget;
+  sel.innerHTML = '<option value="">— select a calendar —</option>';
+  state.config.calendars.forEach(c => {
+    const opt   = document.createElement("option");
+    opt.value   = c.id;
+    opt.textContent = c.name || c.calendarId || c.id;
+    if (c.id === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+// ── Custom Pairs ──────────────────────────────────────────────────────────────
+
+function renderCustomPairs() {
+  const container = document.getElementById("custom-pairs");
+  container.innerHTML = "";
+  (state.config.syncFlows.customTargets || []).forEach((pair, i) =>
+    container.appendChild(buildCustomPair(pair, i))
+  );
+}
+
+function buildCustomPair(pair, idx) {
+  const div = document.createElement("div");
+  div.className = "card";
+  div.style.marginBottom = "8px";
+
+  const targetOpts = state.config.calendars.map(c =>
+    `<option value="${c.id}" ${c.id === pair.target ? "selected" : ""}>${esc(c.name || c.id)}</option>`
+  ).join("");
+
+  const sourceChecks = state.config.calendars.map(c => `
+    <label style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-weight:400;cursor:pointer;font-size:13px">
+      <input type="checkbox" ${(pair.sources || []).includes(c.id) ? "checked" : ""}
+             onchange="updateCustomPairSources(${idx}, '${c.id}', this.checked)">
+      ${esc(c.name || c.id)}
+    </label>
+  `).join("");
+
+  div.innerHTML = `
+    <div class="card-body open" style="display:block">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:12px;font-weight:600;color:var(--muted)">PAIR ${idx + 1}</span>
+        <button class="btn-ghost-danger" onclick="removeCustomPair(${idx})">
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+            <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="field">
+        <label>Target</label>
+        <select style="margin-top:5px" onchange="updateCustomPairTarget(${idx}, this.value)">
+          <option value="">— select target —</option>${targetOpts}
+        </select>
+      </div>
+      <div class="field">
+        <label>Sources</label>
+        <div style="margin-top:6px">${sourceChecks || '<span style="color:var(--muted);font-size:12px">Add calendars first.</span>'}</div>
+      </div>
+    </div>
+  `;
+  return div;
+}
+
+function addCustomPair() {
+  if (!state.config.syncFlows.customTargets) state.config.syncFlows.customTargets = [];
+  state.config.syncFlows.customTargets.push({ target: "", sources: [] });
+  renderCustomPairs();
+}
+
+function removeCustomPair(idx) {
+  state.config.syncFlows.customTargets.splice(idx, 1);
+  renderCustomPairs();
+}
+
+function updateCustomPairTarget(idx, val) {
+  state.config.syncFlows.customTargets[idx].target = val;
+}
+
+function updateCustomPairSources(idx, calId, checked) {
+  const sources = state.config.syncFlows.customTargets[idx].sources || [];
+  if (checked && !sources.includes(calId)) sources.push(calId);
+  else {
+    const i = sources.indexOf(calId);
+    if (i !== -1) sources.splice(i, 1);
+  }
+  state.config.syncFlows.customTargets[idx].sources = sources;
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+function renderSettings() {
+  const s = state.config.settings;
+  document.getElementById("time-frame").value      = String(s.timeFrameDays || 30);
+  document.getElementById("frequency").value        = s.frequency || "daily";
+  document.getElementById("sync-on-update").checked = !!s.syncOnUpdate;
+  document.getElementById("enable-reminder").checked = !!s.enableReminder;
+  document.getElementById("test-mode").checked      = !!s.testMode;
+}
+
+function updateTestBanner() {
+  document.getElementById("test-banner")
+    .classList.toggle("visible", !!state.config.settings.testMode);
+}
+
+// ── Run Summary ───────────────────────────────────────────────────────────────
+
+function loadRunSummary() {
+  google.script.run
+    .withSuccessHandler(renderRunSummary)
+    .withFailureHandler(() => {})
+    .getLastRunSummary();
+}
+
+function renderRunSummary(summary) {
+  if (!summary) return;
+  const panel = document.getElementById("last-run-summary");
+  panel.style.display = "block";
+
+  document.getElementById("run-ts").textContent =
+    summary.ts ? new Date(summary.ts).toLocaleString() : "—";
+
+  const stats = document.getElementById("run-stats");
+  if (summary.error) {
+    stats.innerHTML = `<span style="color:var(--danger)">Error: ${esc(summary.error)}</span>`;
+  } else if (summary.warning) {
+    stats.innerHTML = `<span style="color:#92400e">${esc(summary.warning)}</span>`;
+  } else {
+    const testTag = summary.testMode
+      ? ' <span style="color:var(--muted);font-style:italic">(test mode)</span>' : "";
+    const errTag = (summary.totalErrors || 0) > 0
+      ? ` <span style="color:var(--danger)">Errors <b>${summary.totalErrors}</b></span>` : "";
+    stats.innerHTML = `
+      <span class="run-stat">Inserted <b>${summary.totalInserts || 0}</b></span>
+      <span class="run-stat">Updated <b>${summary.totalPatches || 0}</b></span>
+      <span class="run-stat">Removed <b>${summary.totalDeletes || 0}</b></span>
+      <span class="run-stat">Skipped <b>${summary.totalSkips || 0}</b></span>
+      ${errTag}${testTag}
+    `;
+  }
+
+  document.getElementById("run-log").textContent = JSON.stringify(summary, null, 2);
+}
+
+function toggleLog() {
+  document.getElementById("run-log").style.display =
+    document.getElementById("show-log").checked ? "block" : "none";
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+
+function saveConfig() {
+  const btn = document.getElementById("save-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Saving…';
+
+  google.script.run
+    .withSuccessHandler(() => {
+      btn.disabled = false;
+      btn.textContent = "Save & Activate";
+      toast("Settings saved.", "success");
+    })
+    .withFailureHandler(err => {
+      btn.disabled = false;
+      btn.textContent = "Save & Activate";
+      toast(err.message || "Save failed.", "error");
+    })
+    .saveConfigFromSidebar(state.config);
+}
+
+function runNow() {
+  const btn = document.getElementById("run-now-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-dark"></span> Running…';
+
+  google.script.run
+    .withSuccessHandler(summary => {
+      btn.disabled = false;
+      btn.textContent = "Run now";
+      if (summary) renderRunSummary(summary);
+      toast("Sync complete.", "success");
+    })
+    .withFailureHandler(err => {
+      btn.disabled = false;
+      btn.textContent = "Run now";
+      toast(err.message || "Sync failed.", "error");
+    })
+    .runSyncNow();
+}
+
+function showCleanup() {
+  const boxes = document.getElementById("cleanup-checkboxes");
+  boxes.innerHTML = state.config.calendars.length
+    ? state.config.calendars.map(c => `
+        <label style="display:flex;align-items:center;gap:6px;margin-bottom:5px;font-weight:400;cursor:pointer;font-size:13px">
+          <input type="checkbox" value="${esc(c.calendarId)}">
+          ${esc(c.name || c.calendarId)}
+        </label>
+      `).join("")
+    : '<span style="color:var(--muted);font-size:13px">No calendars configured.</span>';
+  document.getElementById("cleanup-panel").style.display = "block";
+}
+
+function hideCleanup() {
+  document.getElementById("cleanup-panel").style.display = "none";
+}
+
+function runCleanup() {
+  const checked = [...document.querySelectorAll("#cleanup-checkboxes input:checked")]
+    .map(el => el.value);
+  if (!checked.length) { toast("Select at least one calendar.", "error"); return; }
+
+  google.script.run
+    .withSuccessHandler(result => {
+      hideCleanup();
+      const suffix = result.testMode ? " (test mode — nothing written)" : "";
+      toast(`Removed ${result.removed} managed block(s) from selected calendar(s).${suffix}`, "success");
+    })
+    .withFailureHandler(err => toast(err.message || "Cleanup failed.", "error"))
+    .cleanupCalendars(checked);
+}
+
+function confirmReset() {
+  if (!confirm(
+    "Remove all saved settings and triggers?\n\n" +
+    "This can be undone by reconfiguring and saving."
+  )) return;
+
+  google.script.run
+    .withSuccessHandler(() => {
+      state.config = {
+        calendars: [],
+        syncFlows: { mode: "aggregate", aggregateTarget: null, customTargets: [] },
+        settings: { timeFrameDays: 30, frequency: "daily", syncOnUpdate: true, enableReminder: false, testMode: true }
+      };
+      renderCalendars();
+      renderSyncMode();
+      renderSettings();
+      updateTestBanner();
+      document.getElementById("last-run-summary").style.display = "none";
+      toast("Config reset.", "success");
+    })
+    .withFailureHandler(err => toast(err.message || "Reset failed.", "error"))
+    .resetConfig();
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+function esc(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function toast(msg, type) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = `toast${type ? " " + type : ""}`;
+  void el.offsetWidth;
+  el.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove("show"), 3500);
+}
+</script>
+
+</body>
+</html>

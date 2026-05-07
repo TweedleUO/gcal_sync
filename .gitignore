@@ -1,0 +1,12 @@
+# clasp — contains your personal script ID, never commit
+.clasp.json
+
+# build output
+dist/
+
+# dependencies
+node_modules/
+
+# environment
+.env
+.env.local
