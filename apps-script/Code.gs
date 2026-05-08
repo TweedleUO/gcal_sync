@@ -57,17 +57,29 @@ function calSync(e) {
       return;
     }
 
+    // On a calendar-update trigger, only run flows whose SOURCE calendar changed.
+    // This prevents writes to a target calendar (which may also be a source in another
+    // flow) from triggering an unnecessary full re-run and creating a feedback loop.
+    const activeFlows = e?.calendarId
+      ? flows.filter(f => f.sourceCals.some(c => c.calendarId === e.calendarId))
+      : flows;
+
+    if (!activeFlows.length) {
+      log.info("No flows for changed calendar — skipping", { calendarId: e.calendarId });
+      return;
+    }
+
     const tz = Session.getScriptTimeZone() || "UTC";
     const { timeMinISO, timeMaxISO } = syncWindow(CONFIG.settings.timeFrameDays, tz);
 
     log.info("Starting sync", {
-      flowCount: flows.length,
+      flowCount: activeFlows.length,
       timeMinISO,
       timeMaxISO,
       testMode: CONFIG.settings.testMode
     });
 
-    for (const flow of flows) {
+    for (const flow of activeFlows) {
       log.info("Running flow", { target: flow.targetCal.id, sources: flow.sourceCals.map(c => c.id) });
       try {
         const result = runFlow({ ...flow, timeMinISO, timeMaxISO, tz, log });
@@ -348,10 +360,16 @@ function isManagedBlock(e) {
 // Matches managed blocks from any account running this app — used for chain
 // prevention so no instance re-syncs another instance's placeholder blocks.
 function isAnyManagedBlock(e) {
-  const p = getPrivate(e);
-  return !!(p && typeof p.managedBy === "string" &&
-            (p.managedBy === "gcal-sync" || p.managedBy.startsWith("gcal-sync:")) &&
-            p.srcKey);
+  // Check private first — most reliable when the reading script wrote the event.
+  const priv = getPrivate(e);
+  if (priv?.managedBy && priv.srcKey) {
+    const m = priv.managedBy;
+    if (typeof m === "string" && (m === "gcal-sync" || m.startsWith("gcal-sync:"))) return true;
+  }
+  // Fall back to shared — propagates cross-calendar-copy and is readable cross-instance,
+  // making it a reliable guard against propagation-lag false negatives.
+  const m = e.extendedProperties?.shared?.managedBy;
+  return !!(m && typeof m === "string" && (m === "gcal-sync" || m.startsWith("gcal-sync:")));
 }
 
 function readSrcKey(e) {
@@ -388,7 +406,9 @@ function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, srcCal, targetCal, t
     srcICalUID: srcEvent.iCalUID || ""
   };
 
-  const body = { extendedProperties: { private: priv } };
+  // shared.managedBy is readable cross-instance and survives propagation lag better
+  // than private properties, so it acts as a reliable chain-prevention fallback.
+  const body = { extendedProperties: { private: priv, shared: { managedBy: getManagedBy() } } };
 
   if (norm.allDay) {
     body.start = { date: norm.startDate };
@@ -412,17 +432,23 @@ function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, srcCal, targetCal, t
 
   } else if (mode === "mirror") {
     body.summary = srcEvent.summary || blockTitle;
-    if (srcEvent.description) body.description = srcEvent.description;
     if (srcEvent.location)    body.location    = srcEvent.location;
     if (srcEvent.visibility)  body.visibility  = srcEvent.visibility;
     if (srcEvent.colorId)     body.colorId     = srcEvent.colorId;
     body.reminders = CONFIG.settings.enableReminder
       ? (srcEvent.reminders || { useDefault: true })
       : { useDefault: false };
+    // Attendees are included as context text in the description — NOT as Calendar attendees.
+    // Adding real attendees to the block would create a new invitation on each attendee's
+    // calendar, which is wrong: this block is a read-only placeholder, not a new meeting.
+    let desc = srcEvent.description || "";
     if (srcEvent.attendees && srcEvent.attendees.length > 0) {
-      // sendUpdates:'none' is passed at insert/patch time — attendees are copied for display only
-      body.attendees = srcEvent.attendees.map(a => ({ email: a.email }));
+      const list = srcEvent.attendees
+        .map(a => a.displayName ? `${a.displayName} (${a.email})` : a.email)
+        .join(", ");
+      desc = desc ? `${desc}\n\nAttendees: ${list}` : `Attendees: ${list}`;
     }
+    if (desc) body.description = desc;
   }
 
   priv.sig = computeSig(body);
@@ -441,7 +467,6 @@ function patchBody(b) {
   if (b.location    !== undefined) patch.location    = b.location;
   if (b.visibility  !== undefined) patch.visibility  = b.visibility;
   if (b.colorId     !== undefined) patch.colorId     = b.colorId;
-  if (b.attendees   !== undefined) patch.attendees   = b.attendees;
   return patch;
 }
 
@@ -458,7 +483,6 @@ function computeSig(body) {
     visibility:  body.visibility  || "",
     colorId:     body.colorId     || "",
     reminders:   body.reminders   || null,
-    attendees:   body.attendees   || null,
     managedBy:   p.managedBy      || "",
     srcKey:      p.srcKey         || ""
   });

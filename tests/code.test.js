@@ -373,15 +373,14 @@ describe("patchBody", () => {
   test("optional fields included only when present on body", () => {
     const body = {
       summary: "X", start: {}, end: {}, reminders: {}, extendedProperties: {},
-      description: "desc", location: "loc", visibility: "private",
-      colorId: "3", attendees: [{ email: "a@x.com" }]
+      description: "desc", location: "loc", visibility: "private", colorId: "3"
     };
     const patch = ctx.patchBody(body);
     expect(patch.description).toBe("desc");
     expect(patch.location).toBe("loc");
     expect(patch.visibility).toBe("private");
     expect(patch.colorId).toBe("3");
-    expect(patch.attendees).toEqual([{ email: "a@x.com" }]);
+    expect(patch).not.toHaveProperty("attendees");
   });
 
   test("optional fields absent when not on body", () => {
@@ -419,28 +418,43 @@ describe("buildBlockBody mirror mode", () => {
     ctx.calSync(); // primes CONFIG
   });
 
-  test("srcEvent with populated attendees → attendees copied", () => {
+  test("attendees with displayName → formatted into description, not set as Calendar attendees", () => {
     const body = ctx.buildBlockBody({
       ...baseArgs,
-      srcEvent: { id: "e1", summary: "Meeting", attendees: [{ email: "a@x.com" }, { email: "b@x.com" }] }
-    });
-    expect(body.attendees).toEqual([{ email: "a@x.com" }, { email: "b@x.com" }]);
-  });
-
-  test("srcEvent with empty attendees array → attendees not set on body", () => {
-    const body = ctx.buildBlockBody({
-      ...baseArgs,
-      srcEvent: { id: "e2", summary: "Solo", attendees: [] }
+      srcEvent: { id: "e1", summary: "Meeting",
+        attendees: [{ email: "a@x.com", displayName: "Alice" }, { email: "b@x.com" }] }
     });
     expect(body.attendees).toBeUndefined();
+    expect(body.description).toContain("Alice (a@x.com)");
+    expect(body.description).toContain("b@x.com");
   });
 
-  test("srcEvent with no attendees property → attendees not set on body", () => {
+  test("attendees appended after existing description", () => {
     const body = ctx.buildBlockBody({
       ...baseArgs,
-      srcEvent: { id: "e3", summary: "Solo" }
+      srcEvent: { id: "e2", summary: "Meeting", description: "Agenda here",
+        attendees: [{ email: "a@x.com" }] }
     });
     expect(body.attendees).toBeUndefined();
+    expect(body.description).toBe("Agenda here\n\nAttendees: a@x.com");
+  });
+
+  test("empty attendees array → attendees not added to description", () => {
+    const body = ctx.buildBlockBody({
+      ...baseArgs,
+      srcEvent: { id: "e3", summary: "Solo", attendees: [] }
+    });
+    expect(body.attendees).toBeUndefined();
+    expect(body.description).toBeUndefined();
+  });
+
+  test("no attendees property → description not set", () => {
+    const body = ctx.buildBlockBody({
+      ...baseArgs,
+      srcEvent: { id: "e4", summary: "Solo" }
+    });
+    expect(body.attendees).toBeUndefined();
+    expect(body.description).toBeUndefined();
   });
 });
 
@@ -498,9 +512,27 @@ describe("isAnyManagedBlock", () => {
     })).toBe(false);
   });
 
-  test("returns false when srcKey is missing", () => {
+  test("returns false when private srcKey is missing and no shared marker", () => {
     expect(ctx.isAnyManagedBlock({
       extendedProperties: { private: { managedBy: "gcal-sync:test@example.com" } }
+    })).toBe(false);
+  });
+
+  test("returns true via shared marker alone (propagation-lag fallback)", () => {
+    expect(ctx.isAnyManagedBlock({
+      extendedProperties: { shared: { managedBy: "gcal-sync:test@example.com" } }
+    })).toBe(true);
+  });
+
+  test("returns true via shared marker for cross-instance block", () => {
+    expect(ctx.isAnyManagedBlock({
+      extendedProperties: { shared: { managedBy: "gcal-sync:other@example.com" } }
+    })).toBe(true);
+  });
+
+  test("returns false when shared managedBy is a different tool", () => {
+    expect(ctx.isAnyManagedBlock({
+      extendedProperties: { shared: { managedBy: "other-tool:user@example.com" } }
     })).toBe(false);
   });
 
