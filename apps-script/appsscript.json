@@ -17,8 +17,7 @@
   "runtimeVersion": "V8",
   "oauthScopes": [
     "https://www.googleapis.com/auth/calendar",
-    "https://www.googleapis.com/auth/script.triggers.user",
-    "https://www.googleapis.com/auth/script.scriptapp",
+"https://www.googleapis.com/auth/script.scriptapp",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile"
   ]
