@@ -18,6 +18,21 @@ Connect Google Calendar, Outlook, Apple Calendar, and more. Keep your availabili
 
 ## Apps Script (current)
 
+### Quick start (no coding tools required)
+
+1. Open [script.google.com](https://script.google.com) and click **New project**
+2. In the editor, click the `Code.gs` file and **replace all its contents** with the code from [`dist/Code.gs`](dist/Code.gs)
+3. Click **+** next to Files → **HTML** → name it `Sidebar` (exactly) → **replace all its contents** with [`dist/Sidebar.html`](dist/Sidebar.html)
+4. Enable the Calendar Advanced API:
+   - Click **+** next to Services → search **Google Calendar API** → click **Add**
+5. Deploy as a web app:
+   - **Deploy → New deployment** → set type to **Web app**
+   - Execute as: **Me** · Who has access: **Only myself** (or your org)
+   - Click **Deploy** and copy the web app URL
+6. Open the web app URL — the setup sidebar will guide you through adding calendars and activating sync
+
+> **Note:** After any code update, go to **Deploy → Manage deployments**, click the pencil icon on your deployment, set version to **New version**, and save.
+
 ### Option A — clasp (recommended for developers)
 
 ```bash
@@ -29,15 +44,10 @@ npm run push
 
 Then open your Apps Script project, deploy as a web app, and open the setup URL.
 
-### Option B — paste into editor
+### Option B — bundle and paste (no clasp required)
 
 1. Run `npm run bundle` to generate `dist/Code.gs` and `dist/Sidebar.html`
-2. Create a new [Apps Script project](https://script.google.com)
-3. Paste `dist/Code.gs` into the default `Code.gs` file
-4. Add an HTML file: **+** → **HTML** → name it `Sidebar` → paste `dist/Sidebar.html`
-5. Enable Advanced Calendar API: **Services → Calendar API**
-6. Deploy as a web app: **Deploy → New deployment → Web app**
-7. Open the web app URL to complete setup
+2. Follow the **Quick start** steps above, using the generated `dist/` files
 
 ### First-time clasp setup
 

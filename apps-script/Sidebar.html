@@ -575,6 +575,43 @@
       .log-op-dupe  { background: #431407; color: #fdba74; }
     }
 
+    /* ── Welcome card ───────────────────────────────────────────────── */
+    .welcome-card {
+      background: var(--accent-light); border: 1px solid var(--accent-border);
+      border-radius: var(--radius); padding: 16px 18px 14px; margin-bottom: 16px;
+      position: relative;
+    }
+    .welcome-card h3 { font-size: 14px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+    .welcome-card > p { font-size: 12px; line-height: 1.5; margin-bottom: 12px; color: var(--text); }
+    .welcome-steps { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+    .welcome-step { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; }
+    .welcome-step-num {
+      flex-shrink: 0; width: 20px; height: 20px; background: var(--accent); color: white;
+      border-radius: 50%; font-size: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .welcome-step-body { padding-top: 2px; line-height: 1.4; }
+    .welcome-step-body b { display: block; font-weight: 600; }
+    .welcome-step-body span { color: var(--muted); font-size: 11px; }
+    .welcome-dismiss {
+      background: var(--accent); color: white; border: none; border-radius: var(--radius-sm);
+      padding: 7px 14px; font-size: 12px; font-weight: 600; font-family: inherit;
+      cursor: pointer;
+    }
+    .welcome-dismiss:hover { background: var(--accent-h); }
+
+    /* ── Ready banner ───────────────────────────────────────────────── */
+    .ready-banner {
+      background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534;
+      border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 16px;
+      display: none; gap: 10px; align-items: flex-start; font-size: 12px; line-height: 1.5;
+    }
+    .ready-banner.on { display: flex; }
+    .ready-banner-icon { font-size: 15px; flex-shrink: 0; line-height: 1.4; }
+    @media (prefers-color-scheme: dark) {
+      .ready-banner { background: rgba(22,163,74,.1); border-color: rgba(22,163,74,.3); color: #4ade80; }
+    }
+
     /* ── Panel card ─────────────────────────────────────────────────── */
     .panel {
       background: var(--surface); border: 1px solid var(--border);
@@ -682,9 +719,42 @@
         </div>
         <p>Add the Google Calendars you want to sync.</p>
       </div>
+
+      <!-- Welcome card — shown only on first visit (no calendars configured) -->
+      <div class="welcome-card" id="welcome-card" style="display:none" aria-label="Welcome">
+        <h3>Welcome to Calendar Sync</h3>
+        <p>This app keeps your Google Calendars in sync by creating placeholder "busy" events so you appear unavailable in the right places — without exposing private details.</p>
+        <div class="welcome-steps">
+          <div class="welcome-step">
+            <div class="welcome-step-num" aria-hidden="true">1</div>
+            <div class="welcome-step-body"><b>Add Calendars</b><span>Paste the Calendar ID for each calendar you want to connect.</span></div>
+          </div>
+          <div class="welcome-step">
+            <div class="welcome-step-num" aria-hidden="true">2</div>
+            <div class="welcome-step-body"><b>Sync Rules</b><span>Choose which calendars should see each other's busy times.</span></div>
+          </div>
+          <div class="welcome-step">
+            <div class="welcome-step-num" aria-hidden="true">3</div>
+            <div class="welcome-step-body"><b>Schedule</b><span>Set how often syncs run automatically.</span></div>
+          </div>
+          <div class="welcome-step">
+            <div class="welcome-step-num" aria-hidden="true">4</div>
+            <div class="welcome-step-body"><b>Activate</b><span>Preview in test mode first, then go live when you're ready.</span></div>
+          </div>
+        </div>
+        <button class="welcome-dismiss" onclick="dismissWelcome()">Get started →</button>
+      </div>
+
       <div class="cal-list" id="cal-list"></div>
       <div id="cal-empty" class="empty" style="display:none">
-        No calendars added yet. Click <strong>+ Add calendar</strong> to get started.
+        <strong>No calendars added yet.</strong>
+        <p style="margin-top:8px;font-size:12px;line-height:1.55">
+          Click <strong>+ Add calendar</strong> above and paste your <strong>Calendar ID</strong>.<br>
+          A Calendar ID is the email address of the calendar — for example
+          <em>you@gmail.com</em> or <em>name@group.calendar.google.com</em>.<br>
+          Find it in <a href="https://calendar.google.com/r/settings" target="_blank" rel="noopener"
+            style="color:var(--accent)">Google Calendar → Settings → [calendar name] → Calendar ID</a>.
+        </p>
       </div>
       <div class="cal-legend">
         <span><span class="cal-dot ok"></span>Read &amp; write</span>
@@ -780,6 +850,16 @@
           </label>
         </div>
         <p style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45">Syncs run in read-only mode — nothing is written to your calendars. Click <strong>Run Now</strong> below to preview what would sync, then click <strong>Activate</strong> when you're ready to go live.</p>
+      </div>
+
+      <!-- Ready-to-activate banner — shown when setup is complete and testMode is on -->
+      <div class="ready-banner" id="ready-banner" role="status">
+        <span class="ready-banner-icon">✓</span>
+        <div>
+          <strong>Looking good!</strong> Your sync is configured and running in preview mode.
+          Use <strong>Run Now</strong> below to see what will be synced, then click
+          <strong>Activate</strong> in the footer when you're ready to go live.
+        </div>
       </div>
 
       <div class="activity-run-row">
@@ -885,6 +965,8 @@ function init(data) {
   updateFooter();
   goStep(1);
   applyInfoLabels();
+  updateWelcomeCard();
+  updateReadyBanner();
 }
 
 function applyInfoLabels(root) {
@@ -892,6 +974,30 @@ function applyInfoLabels(root) {
     if (!el.getAttribute("aria-label")) el.setAttribute("aria-label", el.getAttribute("data-tip"));
     el.setAttribute("role", "img");
   });
+}
+
+function updateWelcomeCard() {
+  const card = document.getElementById("welcome-card");
+  if (!card) return;
+  const hasAny = state.config && state.config.calendars.length > 0;
+  card.style.display = (!hasAny && !state._welcomeDismissed) ? "" : "none";
+}
+
+function dismissWelcome() {
+  state._welcomeDismissed = true;
+  updateWelcomeCard();
+  // Focus the Add calendar button so the user's next action is obvious
+  const btn = document.querySelector(".step-hdr-row .btn-link");
+  if (btn) btn.focus();
+}
+
+function updateReadyBanner() {
+  const banner = document.getElementById("ready-banner");
+  if (!banner) return;
+  const hasCals   = state.config && state.config.calendars.some(c => c.calendarId);
+  const testMode  = state.config && state.config.settings.testMode;
+  const readyToActivate = hasCals && testMode && !state.isDirty && !state.needsReview;
+  banner.classList.toggle("on", !!readyToActivate);
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -930,6 +1036,7 @@ function updateStatusBar() {
     document.getElementById("status-label").textContent = "Inactive";
   }
   document.getElementById("test-pill").style.display = testMode ? "inline-flex" : "none";
+  updateReadyBanner();
 }
 
 function updateStatusMeta(summary) {
@@ -957,6 +1064,7 @@ function updateFooter() {
   document.getElementById("activate-btn").disabled        = state.needsReview;
   document.getElementById("deactivate-btn").style.display  = live ? "" : "none";
   document.getElementById("deactivate-btn").disabled       = false;
+  updateReadyBanner();
 }
 
 function markReview() {
@@ -1184,6 +1292,7 @@ function addCalendar() {
   const row = buildCalRow(cal);
   document.getElementById("cal-list").appendChild(row);
   document.getElementById("cal-form-" + id).classList.add("on");
+  updateWelcomeCard();
   markReview();
   markDirty();
 }
@@ -1193,6 +1302,7 @@ function removeCalendar(evt, calId) {
   state.config.calendars = state.config.calendars.filter(c => c.id !== calId);
   document.getElementById("cal-row-" + calId)?.remove();
   if (!state.config.calendars.length) document.getElementById("cal-empty").style.display = "block";
+  updateWelcomeCard();
   markReview();
   markDirty();
 }
@@ -1342,6 +1452,9 @@ function applyAccessResult(res, id) {
       if (dotEl) dotEl.className = "cal-dot warn";
     } else if (res.reason === "not-found") {
       html = `<span class="cal-access-err">✗ Not found</span> — check the ID, or try:${addBtn}`;
+    } else if (res.reason === "error" && /calendar is not defined/i.test(res.error || "")) {
+      html = `<span class="cal-access-err">✗ Calendar Advanced API not enabled.</span> Open <strong>Extensions → Apps Script → Services</strong>, find <em>Google Calendar API</em>, and click Add.`;
+      if (dotEl) dotEl.className = "cal-dot err";
     } else {
       html = `<span class="cal-access-err">✗ ${esc(res.error || "Could not verify access.")}</span>${addBtn}`;
     }
