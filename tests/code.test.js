@@ -209,24 +209,235 @@ describe("isWeekend", () => {
 
 describe("isManagedBlock", () => {
   let ctx;
+  // MANAGED_BY is "gcal-sync:" + Session.getEffectiveUser().getEmail()
+  // The mock returns "test@example.com", so MANAGED_BY = "gcal-sync:test@example.com"
   beforeAll(() => { ctx = loadGs("Code.gs"); });
 
-  test("returns true for a managed block", () => {
-    const e = { extendedProperties: { private: { managedBy: "gcal-sync", srcKey: "cal|ID|123" } } };
+  test("returns true for a managed block matching this account", () => {
+    const e = { extendedProperties: { private: { managedBy: "gcal-sync:test@example.com", srcKey: "cal|ID|123" } } };
     expect(ctx.isManagedBlock(e)).toBe(true);
   });
 
-  test("returns false when managedBy is wrong", () => {
+  test("returns false for a block from a different account", () => {
+    const e = { extendedProperties: { private: { managedBy: "gcal-sync:other@example.com", srcKey: "cal|ID|123" } } };
+    expect(ctx.isManagedBlock(e)).toBe(false);
+  });
+
+  test("returns false when managedBy is a different tool", () => {
     const e = { extendedProperties: { private: { managedBy: "other-tool", srcKey: "cal|ID|123" } } };
     expect(ctx.isManagedBlock(e)).toBe(false);
   });
 
   test("returns false when srcKey is missing", () => {
-    const e = { extendedProperties: { private: { managedBy: "gcal-sync" } } };
+    const e = { extendedProperties: { private: { managedBy: "gcal-sync:test@example.com" } } };
     expect(ctx.isManagedBlock(e)).toBe(false);
   });
 
   test("returns false when extendedProperties is absent", () => {
     expect(ctx.isManagedBlock({})).toBe(false);
+  });
+});
+
+// ── syncWindow ────────────────────────────────────────────────────────────────
+
+describe("syncWindow", () => {
+  test("returns ISO strings spanning the requested number of days", () => {
+    const ctx = loadGs("Code.gs");
+    const { timeMinISO, timeMaxISO } = ctx.syncWindow(30, "UTC");
+    const min = new Date(timeMinISO);
+    const max = new Date(timeMaxISO);
+    expect(isNaN(min)).toBe(false);
+    expect(isNaN(max)).toBe(false);
+    const diffDays = (max - min) / (1000 * 60 * 60 * 24);
+    expect(diffDays).toBe(30);
+  });
+
+  test("UTC timezone produces a valid date (not Invalid Date)", () => {
+    const ctx = loadGs("Code.gs", {
+      Session: { getScriptTimeZone: () => "UTC", getEffectiveUser: () => ({ getEmail: () => "t@example.com" }) },
+      Utilities: {
+        DigestAlgorithm: { SHA_256: "SHA_256" }, Charset: { UTF_8: "UTF_8" },
+        computeDigest: () => [],
+        sleep: jest.fn(),
+        formatDate: (d, tz, fmt) => {
+          if (fmt === "Z") return "Z";           // simulate GAS returning literal "Z" for UTC
+          if (fmt === "yyyy-MM-dd") return new Date(d).toISOString().slice(0, 10);
+          return new Date(d).toISOString();
+        }
+      }
+    });
+    const { timeMinISO, timeMaxISO } = ctx.syncWindow(7, "UTC");
+    expect(new Date(timeMinISO).toString()).not.toBe("Invalid Date");
+    expect(new Date(timeMaxISO).toString()).not.toBe("Invalid Date");
+  });
+});
+
+// ── retry ─────────────────────────────────────────────────────────────────────
+
+describe("retry", () => {
+  test("retries on 'Backend Error' (spaced, capital B)", () => {
+    const ctx = loadGs("Code.gs");
+    let calls = 0;
+    const fn = () => { calls++; if (calls < 2) throw new Error("Backend Error occurred"); return "ok"; };
+    expect(ctx.retry(fn, "test")).toBe("ok");
+    expect(calls).toBe(2);
+  });
+
+  test("retries on quota error message", () => {
+    const ctx = loadGs("Code.gs");
+    let calls = 0;
+    const fn = () => { calls++; if (calls < 2) throw new Error("Quota exceeded for quota metric"); return "done"; };
+    expect(ctx.retry(fn, "test")).toBe("done");
+    expect(calls).toBe(2);
+  });
+
+  test("does not retry non-retryable errors", () => {
+    const ctx = loadGs("Code.gs");
+    let calls = 0;
+    const fn = () => { calls++; throw new Error("Not Found"); };
+    expect(() => ctx.retry(fn, "test")).toThrow("Not Found");
+    expect(calls).toBe(1);
+  });
+});
+
+// ── computeSig ────────────────────────────────────────────────────────────────
+
+describe("computeSig", () => {
+  let ctx;
+  beforeAll(() => { ctx = loadGs("Code.gs"); });
+
+  const base = {
+    summary: "Meeting",
+    start: { dateTime: "2024-03-10T10:00:00Z" },
+    end:   { dateTime: "2024-03-10T11:00:00Z" },
+    reminders: { useDefault: false },
+    extendedProperties: { private: { managedBy: "gcal-sync:a@b.com", srcKey: "abc123", sig: "" } }
+  };
+
+  test("same body produces the same signature", () => {
+    expect(ctx.computeSig(base)).toBe(ctx.computeSig(base));
+  });
+
+  test("returns a 64-char hex string", () => {
+    expect(ctx.computeSig(base)).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("different summary → different sig", () => {
+    const other = { ...base, summary: "Different" };
+    expect(ctx.computeSig(base)).not.toBe(ctx.computeSig(other));
+  });
+
+  test("different srcKey → different sig", () => {
+    const other = {
+      ...base,
+      extendedProperties: { private: { ...base.extendedProperties.private, srcKey: "xyz999" } }
+    };
+    expect(ctx.computeSig(base)).not.toBe(ctx.computeSig(other));
+  });
+
+  test("sig field inside extendedProperties is excluded from hash", () => {
+    const withSig = {
+      ...base,
+      extendedProperties: { private: { ...base.extendedProperties.private, sig: "somepreviousvalue" } }
+    };
+    expect(ctx.computeSig(base)).toBe(ctx.computeSig(withSig));
+  });
+
+  test("missing optional fields treated as empty — same sig as explicit empty", () => {
+    const noOpts    = { ...base };
+    const withEmpty = { ...base, description: "", location: "", visibility: "" };
+    expect(ctx.computeSig(noOpts)).toBe(ctx.computeSig(withEmpty));
+  });
+});
+
+// ── patchBody ─────────────────────────────────────────────────────────────────
+
+describe("patchBody", () => {
+  let ctx;
+  beforeAll(() => { ctx = loadGs("Code.gs"); });
+
+  test("always includes core fields", () => {
+    const body = {
+      summary: "X", start: { date: "2024-01-01" }, end: { date: "2024-01-02" },
+      reminders: { useDefault: false }, extendedProperties: { private: {} }
+    };
+    const patch = ctx.patchBody(body);
+    expect(patch).toHaveProperty("summary", "X");
+    expect(patch).toHaveProperty("start");
+    expect(patch).toHaveProperty("end");
+    expect(patch).toHaveProperty("reminders");
+    expect(patch).toHaveProperty("extendedProperties");
+  });
+
+  test("optional fields included only when present on body", () => {
+    const body = {
+      summary: "X", start: {}, end: {}, reminders: {}, extendedProperties: {},
+      description: "desc", location: "loc", visibility: "private",
+      colorId: "3", attendees: [{ email: "a@x.com" }]
+    };
+    const patch = ctx.patchBody(body);
+    expect(patch.description).toBe("desc");
+    expect(patch.location).toBe("loc");
+    expect(patch.visibility).toBe("private");
+    expect(patch.colorId).toBe("3");
+    expect(patch.attendees).toEqual([{ email: "a@x.com" }]);
+  });
+
+  test("optional fields absent when not on body", () => {
+    const body = { summary: "X", start: {}, end: {}, reminders: {}, extendedProperties: {} };
+    const patch = ctx.patchBody(body);
+    expect(patch).not.toHaveProperty("description");
+    expect(patch).not.toHaveProperty("location");
+    expect(patch).not.toHaveProperty("visibility");
+    expect(patch).not.toHaveProperty("colorId");
+    expect(patch).not.toHaveProperty("attendees");
+  });
+});
+
+// ── buildBlockBody (R4: mirror mode attendees) ────────────────────────────────
+
+describe("buildBlockBody mirror mode", () => {
+  let ctx;
+  const targetCal = { id: "t", calendarId: "target@gmail.com", name: "Target", visibility: "mirror", blockTitle: "Blocked" };
+  const norm = { allDay: false, start: new Date("2024-03-10T10:00:00Z"), end: new Date("2024-03-10T11:00:00Z") };
+  const baseArgs = { srcKey: "k1", norm, srcCalId: "src@gmail.com", targetCal, tz: "UTC" };
+
+  beforeAll(() => {
+    // buildBlockBody reads module-level CONFIG (set inside calSync). Inject mocks so
+    // a calSync() call short-circuits after CONFIG = getConfig() without side effects.
+    const mockConfig = {
+      settings: { enableReminder: false, testMode: false, timeFrameDays: 30, frequency: "daily", syncOnUpdate: false },
+      calendars: [], syncFlows: { mode: "aggregate", aggregateTarget: null, customTargets: [] }
+    };
+    ctx = loadGs("Code.gs", {
+      getConfig:      () => mockConfig,
+      resolveFlows:   () => [],
+      saveRunSummary: () => {}
+    });
+    ctx.calSync(); // primes CONFIG
+  });
+
+  test("srcEvent with populated attendees → attendees copied", () => {
+    const body = ctx.buildBlockBody({
+      ...baseArgs,
+      srcEvent: { id: "e1", summary: "Meeting", attendees: [{ email: "a@x.com" }, { email: "b@x.com" }] }
+    });
+    expect(body.attendees).toEqual([{ email: "a@x.com" }, { email: "b@x.com" }]);
+  });
+
+  test("srcEvent with empty attendees array → attendees not set on body", () => {
+    const body = ctx.buildBlockBody({
+      ...baseArgs,
+      srcEvent: { id: "e2", summary: "Solo", attendees: [] }
+    });
+    expect(body.attendees).toBeUndefined();
+  });
+
+  test("srcEvent with no attendees property → attendees not set on body", () => {
+    const body = ctx.buildBlockBody({
+      ...baseArgs,
+      srcEvent: { id: "e3", summary: "Solo" }
+    });
+    expect(body.attendees).toBeUndefined();
   });
 });

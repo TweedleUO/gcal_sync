@@ -74,8 +74,11 @@ function makeMockPropertiesService(initialStore = {}) {
   return { getScriptProperties: () => api };
 }
 
-function makeMockSession(tz = "UTC") {
-  return { getScriptTimeZone: () => tz };
+function makeMockSession(tz = "UTC", email = "test@example.com") {
+  return {
+    getScriptTimeZone:  () => tz,
+    getEffectiveUser:   () => ({ getEmail: () => email })
+  };
 }
 
 function makeMockScriptApp() {

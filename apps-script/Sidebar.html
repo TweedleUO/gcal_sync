@@ -21,6 +21,8 @@
       --danger: #dc2626;
       --danger-light: #fef2f2;
       --success: #16a34a;
+      --warning: #d97706;
+      --warning-h: #b45309;
       --warn-bg: #fefce8;
       --warn-border: #fde68a;
       --warn-text: #92400e;
@@ -57,6 +59,8 @@
         --danger: #f87171;
         --danger-light: rgba(239,68,68,.1);
         --success: #4ade80;
+        --warning: #fbbf24;
+        --warning-h: #f59e0b;
         --warn-bg: rgba(234,179,8,.1);
         --warn-border: rgba(234,179,8,.3);
         --warn-text: #fde047;
@@ -97,10 +101,13 @@
       display: flex; align-items: center; gap: 6px; margin-bottom: 3px;
     }
     .status-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--muted); flex-shrink: 0; transition: background .3s;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0; transition: background .2s, clip-path .2s;
     }
-    .status-dot.active { background: var(--success); box-shadow: 0 0 0 2px rgba(22,163,74,.2); }
+    .status-dot.state-active   { background: var(--success); border-radius: 50%; clip-path: none; box-shadow: 0 0 0 2px rgba(22,163,74,.2); }
+    .status-dot.state-preview  { background: var(--warning); clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0; box-shadow: none; }
+    .status-dot.state-dirty    { background: var(--warning); clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0; box-shadow: none; }
+    .status-dot.state-inactive { background: var(--danger);  border-radius: 0; clip-path: none; box-shadow: none; }
     .status-label { font-size: 12px; font-weight: 600; flex: 1; }
     .status-test-pill {
       font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 20px;
@@ -172,12 +179,21 @@
     .btn-save {
       display: flex; align-items: center; justify-content: center; gap: 5px;
       width: 100%; padding: 8px 10px;
-      background: var(--accent); color: white; border: none;
+      background: var(--accent); color: white; border: 1px solid transparent;
       border-radius: var(--radius-sm); font-size: 12px; font-weight: 600;
       font-family: inherit; cursor: pointer; transition: background .15s, opacity .15s;
     }
     .btn-save:hover { background: var(--accent-h); }
     .btn-save:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-save.btn-secondary {
+      background: var(--surface); color: var(--text); border-color: var(--border);
+    }
+    .btn-save.btn-secondary:hover { background: var(--bg); }
+    .btn-save.btn-secondary:disabled { opacity: .35; }
+    .btn-save.btn-warning {
+      background: var(--warning); color: white; border-color: transparent;
+    }
+    .btn-save.btn-warning:hover { background: var(--warning-h); }
     .btn-side-action {
       display: flex; align-items: center; justify-content: center;
       width: 100%; padding: 6px 8px;
@@ -267,9 +283,9 @@
     .cleanup-cal-meta { min-width: 0; flex: 1; }
     .cleanup-cal-meta .cal-name { margin-bottom: 1px; }
     .cleanup-cal-id { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .cal-dot.ok   { background: #16a34a; }
-    .cal-dot.warn { background: #d97706; }
-    .cal-dot.err  { background: var(--danger); }
+    .cal-dot.ok   { background: #16a34a; border-radius: 50%; clip-path: none; }
+    .cal-dot.warn { background: #d97706; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0; }
+    .cal-dot.err  { background: var(--danger); border-radius: 0; clip-path: none; }
     @media (prefers-color-scheme: dark) {
       .cal-access-ok { color: #4ade80; }
       .cal-access-warn { color: #fbbf24; }
@@ -351,13 +367,14 @@
       width: 15px; height: 15px; background: var(--border); color: var(--muted);
       border-radius: 50%; font-size: 9px; font-weight: 700; cursor: default; flex-shrink: 0;
     }
-    .info:hover::after {
+    .info:hover::after, .info:focus::after {
       content: attr(data-tip); position: absolute;
       bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
       background: #1f2937; color: white; font-size: 11px; font-weight: 400;
       padding: 6px 9px; border-radius: 5px; white-space: normal;
       width: 220px; z-index: 100; line-height: 1.45; pointer-events: none;
     }
+    .info:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     /* ── Routing matrix ─────────────────────────────────────────────── */
     .preset-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -488,9 +505,9 @@
       width: 8px; height: 8px; border-radius: 50%;
       flex-shrink: 0; display: inline-block; vertical-align: middle;
     }
-    .run-dot-ok    { background: var(--success); box-shadow: 0 0 0 2px rgba(22,163,74,.2); }
-    .run-dot-error { background: var(--danger);  box-shadow: 0 0 0 2px rgba(220,38,38,.2); }
-    .run-dot-warn  { background: #f59e0b;        box-shadow: 0 0 0 2px rgba(245,158,11,.2); }
+    .run-dot-ok    { background: var(--success); border-radius: 50%; clip-path: none; box-shadow: 0 0 0 2px rgba(22,163,74,.2); }
+    .run-dot-warn  { background: #f59e0b; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0; box-shadow: none; }
+    .run-dot-error { background: var(--danger);  border-radius: 0; clip-path: none; box-shadow: none; }
     .run-test-tag {
       font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 20px;
       background: var(--warn-bg); border: 1px solid var(--warn-border);
@@ -551,6 +568,12 @@
       .log-op-del   { background: #451a03; color: #fcd34d; }
       .log-op-err   { background: #7f1d1d; color: #fca5a5; }
       .log-op-dupe  { background: #431407; color: #fdba74; }
+    }
+
+    /* ── Panel card ─────────────────────────────────────────────────── */
+    .panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow);
     }
 
     /* ── Empty / toast / spinner ────────────────────────────────────── */
@@ -616,9 +639,15 @@
       </button>
     </div>
     <div class="sidebar-footer">
-      <div class="save-hint" id="save-hint">Review Sync Rules first</div>
-      <button class="btn-save" id="save-btn" onclick="saveConfig()">
-        <span class="save-lbl">Save &amp; Activate</span>
+      <div class="save-hint" id="save-hint">Review Sync Rules before activating</div>
+      <button class="btn-save btn-secondary" id="save-btn" onclick="saveConfig()" disabled>
+        <span class="save-lbl">Save</span>
+      </button>
+      <button class="btn-save" id="activate-btn" onclick="activateSync()">
+        <span class="save-lbl">Activate</span>
+      </button>
+      <button class="btn-save btn-warning" id="deactivate-btn" onclick="deactivateSync()" style="display:none">
+        <span class="save-lbl">Deactivate</span>
       </button>
       <button class="btn-side-action" onclick="openCleanup()">
         <span class="side-lbl">Cleanup</span>
@@ -675,13 +704,13 @@
         <p>Configure when syncs run automatically.</p>
       </div>
 
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)">
+      <div class="panel">
         <div class="field">
           <div class="label-row">
             <label>Sync window</label>
-            <span class="info" data-tip="How many days ahead to sync. Longer windows use more API quota.">i</span>
+            <span class="info" tabindex="0" data-tip="How many days ahead to sync. Longer windows use more API quota.">i</span>
           </div>
-          <select id="time-frame" onchange="state.config.settings.timeFrameDays = +this.value">
+          <select id="time-frame" onchange="state.config.settings.timeFrameDays = +this.value; markDirty()">
             <option value="7">7 days</option>
             <option value="14">14 days</option>
             <option value="30">30 days</option>
@@ -692,9 +721,9 @@
         <div class="field">
           <div class="label-row">
             <label>Auto-sync frequency</label>
-            <span class="info" data-tip="How often the sync runs automatically. Daily at midnight is recommended for most users.">i</span>
+            <span class="info" tabindex="0" data-tip="How often the sync runs automatically. Daily at midnight is recommended for most users.">i</span>
           </div>
-          <select id="frequency" onchange="state.config.settings.frequency = this.value">
+          <select id="frequency" onchange="state.config.settings.frequency = this.value; markDirty()">
             <option value="every15">Every 15 minutes</option>
             <option value="every30">Every 30 minutes</option>
             <option value="hourly">Hourly</option>
@@ -705,21 +734,21 @@
         <div class="divider">Triggers</div>
         <div class="toggle-row">
           <div class="toggle-lbl">
-            <span>Also sync when a calendar is updated</span>
-            <span class="info" data-tip="Triggers a sync whenever a source calendar changes. Works alongside the scheduled frequency.">i</span>
+            <span>Sync when source calendars change</span>
+            <span class="info" tabindex="0" data-tip="Triggers a sync whenever a source calendar changes. Works alongside the scheduled frequency.">i</span>
           </div>
           <label class="toggle">
-            <input type="checkbox" id="sync-on-update" onchange="state.config.settings.syncOnUpdate = this.checked">
+            <input type="checkbox" id="sync-on-update" onchange="state.config.settings.syncOnUpdate = this.checked; markDirty()">
             <div class="toggle-track"></div><div class="toggle-thumb"></div>
           </label>
         </div>
         <div class="toggle-row">
           <div class="toggle-lbl">
             <span>Enable reminders on blocked events</span>
-            <span class="info" data-tip="When off, blocked events have no reminders. Recommended off for most users.">i</span>
+            <span class="info" tabindex="0" data-tip="When off, blocked events have no reminders. Recommended off for most users.">i</span>
           </div>
           <label class="toggle">
-            <input type="checkbox" id="enable-reminder" onchange="state.config.settings.enableReminder = this.checked">
+            <input type="checkbox" id="enable-reminder" onchange="state.config.settings.enableReminder = this.checked; markDirty()">
             <div class="toggle-track"></div><div class="toggle-thumb"></div>
           </label>
         </div>
@@ -734,14 +763,14 @@
         <p>Run syncs manually, review recent activity, and manage test mode.</p>
       </div>
 
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);margin-bottom:16px">
+      <div class="panel" style="margin-bottom:16px">
         <div class="toggle-row" style="min-height:auto;padding:0">
           <div class="toggle-lbl">
             <span style="font-weight:500">Test mode</span>
-            <span class="info" data-tip="When on, syncs run but nothing is written to your calendars. Save & Activate will turn this off.">i</span>
+            <span class="info" tabindex="0" data-tip="When on, syncs run but nothing is written to your calendars. Save & Activate will turn this off.">i</span>
           </div>
           <label class="toggle">
-            <input type="checkbox" id="test-mode" onchange="state.config.settings.testMode = this.checked; updateStatusBar()">
+            <input type="checkbox" id="test-mode" onchange="state.config.settings.testMode = this.checked; markDirty()">
             <div class="toggle-track"></div><div class="toggle-thumb"></div>
           </label>
         </div>
@@ -767,7 +796,7 @@
         <h2>Cleanup</h2>
         <p>Remove managed busy blocks written by this app from your calendars.</p>
       </div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)">
+      <div class="panel">
         <div class="field">
           <div class="label-row"><label>Scope</label></div>
           <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;font-size:13px;font-weight:400">
@@ -783,6 +812,7 @@
         </div>
         <div class="field" style="margin-top:14px">
           <div class="label-row"><label>Calendars</label></div>
+          <p style="font-size:11px;color:var(--muted);margin:4px 0 6px">Select the calendars to clean up, then click Remove.</p>
           <div class="cleanup-cal-list" id="cleanup-checks"></div>
         </div>
         <div style="display:flex;gap:8px;margin-top:14px">
@@ -813,6 +843,7 @@ const state = {
   calIdCounter: 0,
   currentStep: 0,
   needsReview: false,
+  isDirty: false,
   scriptEmail: ""
 };
 
@@ -833,14 +864,20 @@ function init(data) {
   const config = { ...data };
   delete config._scriptEmail;
   state.config = config;
-  state.calIdCounter = config.calendars.length;
+  state.isDirty = false;
+  state.needsReview = false;
+  state.calIdCounter = config.calendars.reduce((max, c) => {
+    const n = parseInt((c.id || "").replace("cal_", ""), 10);
+    return isNaN(n) ? max : Math.max(max, n);
+  }, 0);
   document.getElementById("loading").style.display = "none";
+  document.getElementById("review-badge").classList.remove("on");
   renderCalendars();
   config.calendars.forEach(cal => { if (cal.calendarId) checkCalAccess(cal.calendarId, cal.id); });
   renderSettings();
   updateStatusBar();
   loadRunSummary();
-  updateSaveState();
+  updateFooter();
   goStep(1);
 }
 
@@ -852,7 +889,7 @@ function goStep(n) {
     if (state.needsReview) {
       state.needsReview = false;
       document.getElementById("review-badge").classList.remove("on");
-      updateSaveState();
+      updateFooter();
     }
     renderSyncRules();
   }
@@ -865,10 +902,23 @@ function goStep(n) {
 
 // ── Status bar ────────────────────────────────────────────────────────────────
 function updateStatusBar() {
-  const active = state.config && state.config.calendars.length > 0;
-  document.getElementById("status-dot").classList.toggle("active", active);
-  document.getElementById("status-label").textContent = active ? "Active" : "Inactive";
+  const hasCals  = state.config && state.config.calendars.length > 0;
   const testMode = state.config && state.config.settings.testMode;
+  const live     = hasCals && !testMode;
+  const dot = document.getElementById("status-dot");
+  if (state.isDirty) {
+    dot.className = "status-dot state-dirty";
+    document.getElementById("status-label").textContent = "Unsaved changes";
+  } else if (live) {
+    dot.className = "status-dot state-active";
+    document.getElementById("status-label").textContent = "Active";
+  } else if (hasCals) {
+    dot.className = "status-dot state-preview";
+    document.getElementById("status-label").textContent = "Preview";
+  } else {
+    dot.className = "status-dot state-inactive";
+    document.getElementById("status-label").textContent = "Inactive";
+  }
   document.getElementById("test-pill").style.display = testMode ? "inline-flex" : "none";
 }
 
@@ -886,17 +936,28 @@ function relTime(d) {
   return Math.floor(h / 24) + "d ago";
 }
 
-// ── Save state ────────────────────────────────────────────────────────────────
-function updateSaveState() {
-  const blocked = state.needsReview;
-  document.getElementById("save-btn").disabled = blocked;
-  document.getElementById("save-hint").classList.toggle("on", blocked);
+// ── Footer state ──────────────────────────────────────────────────────────────
+function updateFooter() {
+  const hasCals  = state.config && state.config.calendars.length > 0;
+  const testMode = state.config && state.config.settings.testMode;
+  const live     = hasCals && !testMode;
+  document.getElementById("save-btn").disabled = !state.isDirty;
+  document.getElementById("save-hint").classList.toggle("on", state.needsReview);
+  document.getElementById("activate-btn").style.display   = live ? "none" : "";
+  document.getElementById("activate-btn").disabled        = state.needsReview;
+  document.getElementById("deactivate-btn").style.display = live ? "" : "none";
 }
 
 function markReview() {
   state.needsReview = true;
   document.getElementById("review-badge").classList.add("on");
-  updateSaveState();
+  updateFooter();
+}
+
+function markDirty() {
+  state.isDirty = true;
+  updateStatusBar();
+  updateFooter();
 }
 
 // ── Step 1: Calendars ─────────────────────────────────────────────────────────
@@ -960,7 +1021,7 @@ function buildCalForm(cal) {
     <div class="field">
       <div class="label-row">
         <label>Calendar ID or link</label>
-        <span class="info" data-tip="Paste a Google Calendar link or enter the ID directly (e.g. you@gmail.com).">i</span>
+        <span class="info" tabindex="0" data-tip="Paste a Google Calendar link or enter the ID directly (e.g. you@gmail.com).">i</span>
       </div>
       <input type="text" value="${esc(cal.calendarId)}" placeholder="you@gmail.com or calendar link"
              oninput="onCalIdInput(this,'${cal.id}')"
@@ -976,7 +1037,7 @@ function buildCalForm(cal) {
     <div class="field" id="block-title-field-${cal.id}"${isMirror ? ' style="display:none"' : ""}>
       <div class="label-row">
         <label>Block title</label>
-        <span class="info" data-tip="Text shown as the event title for blocked events. Defaults to 'Blocked'.">i</span>
+        <span class="info" tabindex="0" data-tip="Text shown as the event title for blocked events. Defaults to 'Blocked'.">i</span>
       </div>
       <input type="text" value="${esc(cal.blockTitle || "Blocked")}" placeholder="Blocked"
              oninput="updateCalField('${cal.id}','blockTitle',this.value)">
@@ -985,7 +1046,7 @@ function buildCalForm(cal) {
     <div class="toggle-row">
       <div class="toggle-lbl">
         <span>Accept all-day events</span>
-        <span class="info" data-tip="When on, all-day events from source calendars are blocked on this calendar.">i</span>
+        <span class="info" tabindex="0" data-tip="When on, all-day events from source calendars are blocked on this calendar.">i</span>
       </div>
       <label class="toggle">
         <input type="checkbox" ${cal.acceptAllDayEvents ? "checked" : ""}
@@ -996,7 +1057,7 @@ function buildCalForm(cal) {
     <div class="toggle-row">
       <div class="toggle-lbl">
         <span>Allow double-booking</span>
-        <span class="info" data-tip="When off, blocks are skipped if the target time slot is already busy.">i</span>
+        <span class="info" tabindex="0" data-tip="When off, blocks are skipped if the target time slot is already busy.">i</span>
       </div>
       <label class="toggle">
         <input type="checkbox" ${cal.allowDoubleBooking ? "checked" : ""}
@@ -1007,7 +1068,7 @@ function buildCalForm(cal) {
     <div class="toggle-row">
       <div class="toggle-lbl">
         <span>Weekday events only</span>
-        <span class="info" data-tip="When on, weekend events from source calendars are not blocked on this calendar.">i</span>
+        <span class="info" tabindex="0" data-tip="When on, weekend events from source calendars are not blocked on this calendar.">i</span>
       </div>
       <label class="toggle">
         <input type="checkbox" ${cal.weekdayEventsOnly ? "checked" : ""}
@@ -1025,7 +1086,11 @@ function buildVisOpts(cal) {
     { v: "mirror",       t: "As-Is",         d: "All event details are passed through as-is, including the original privacy settings." }
   ];
   return opts.map(o => `
-    <div class="vis-opt${cal.visibility === o.v ? " on" : ""}" onclick="selectVis('${cal.id}','${o.v}',this)">
+    <div class="vis-opt${cal.visibility === o.v ? " on" : ""}"
+         role="radio" aria-checked="${cal.visibility === o.v}"
+         tabindex="${cal.visibility === o.v ? "0" : "-1"}"
+         onclick="selectVis('${esc(cal.id)}','${o.v}',this)"
+         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectVis('${esc(cal.id)}','${o.v}',this);}">
       <div class="vis-radio"></div>
       <div><div class="vis-title">${o.t}</div><div class="vis-desc">${o.d}</div></div>
     </div>
@@ -1037,7 +1102,7 @@ function buildVisSub(cal) {
     <div class="toggle-row" style="padding-top:6px">
       <div class="toggle-lbl">
         <span>Show original event title</span>
-        <span class="info" data-tip="When on, the original event title is used instead of the block title.">i</span>
+        <span class="info" tabindex="0" data-tip="When on, the original event title is used instead of the block title.">i</span>
       </div>
       <label class="toggle">
         <input type="checkbox" ${cal.privateShowOriginalTitle ? "checked" : ""}
@@ -1053,7 +1118,14 @@ function selectVis(calId, value, el) {
   const cal = getCalById(calId);
   if (!cal) return;
   cal.visibility = value;
-  el.closest(".field").querySelectorAll(".vis-opt").forEach(o => o.classList.toggle("on", o === el));
+  markDirty();
+  el.closest(".field").querySelectorAll(".vis-opt").forEach(o => {
+    const isSelected = o === el;
+    o.classList.toggle("on", isSelected);
+    o.setAttribute("aria-checked", isSelected);
+    o.setAttribute("tabindex", isSelected ? "0" : "-1");
+  });
+  if (el) el.focus();
   document.getElementById("vis-sub-" + calId).innerHTML = buildVisSub(cal);
   const badges = { fullyPrivate: "Fully Private", private: "Private", mirror: "As-Is" };
   document.getElementById("cal-badge-" + calId).textContent = badges[value] || value;
@@ -1082,6 +1154,7 @@ function addCalendar() {
   document.getElementById("cal-list").appendChild(row);
   document.getElementById("cal-form-" + id).classList.add("on");
   markReview();
+  markDirty();
 }
 
 function removeCalendar(evt, calId) {
@@ -1090,6 +1163,7 @@ function removeCalendar(evt, calId) {
   document.getElementById("cal-row-" + calId)?.remove();
   if (!state.config.calendars.length) document.getElementById("cal-empty").style.display = "block";
   markReview();
+  markDirty();
 }
 
 function onCalIdInput(input, calId) {
@@ -1111,7 +1185,7 @@ function onCalIdBlur(input, calId) {
 
 function updateCalField(calId, field, value) {
   const cal = getCalById(calId);
-  if (cal) cal[field] = value;
+  if (cal) { cal[field] = value; markDirty(); }
 }
 
 function getCalById(id) {
@@ -1160,6 +1234,7 @@ function onDrop(e, targetCalId) {
 
   const cals = state.config.calendars;
   const srcIdx = cals.findIndex(c => c.id === srcId);
+  if (srcIdx === -1) return;
   const tgtRow = document.getElementById("cal-row-" + targetCalId);
   const rect = tgtRow.getBoundingClientRect();
   const insertAfter = e.clientY >= rect.top + rect.height / 2;
@@ -1171,8 +1246,6 @@ function onDrop(e, targetCalId) {
   const srcRow = document.getElementById("cal-row-" + srcId);
   if (insertAfter) tgtRow.after(srcRow);
   else tgtRow.before(srcRow);
-
-  markReview();
 }
 
 // ── Calendar access validation ────────────────────────────────────────────────
@@ -1186,9 +1259,16 @@ function checkCalAccess(calendarId, id) {
     return;
   }
   statusEl.innerHTML = `<span style="color:var(--muted)">Checking access…</span>`;
+  const validatedId = calendarId;
   google.script.run
-    .withSuccessHandler(res => applyAccessResult(res, id))
-    .withFailureHandler(err => applyAccessResult({ ok: false, reason: "error", error: err.message }, id))
+    .withSuccessHandler(res => {
+      if (getCalById(id)?.calendarId !== validatedId) return;
+      applyAccessResult(res, id);
+    })
+    .withFailureHandler(err => {
+      if (getCalById(id)?.calendarId !== validatedId) return;
+      applyAccessResult({ ok: false, reason: "error", error: err.message }, id);
+    })
     .validateCalendar(calendarId);
 }
 
@@ -1240,12 +1320,21 @@ function parseCalendarId(input) {
   const s = (input || "").trim();
   if (!s) return s;
   if (/^[^\s@]+@[^\s@]+$/.test(s) || s === "primary") return s;
-  const fromSrc  = s.match(/[?&]src=([^&\s"']+)/i);
-  if (fromSrc)  return decodeURIComponent(fromSrc[1]);
-  const fromCid  = s.match(/[?&]cid=([^&\s"']+)/i);
-  if (fromCid)  return decodeURIComponent(fromCid[1]);
+  function tryDecode(v) {
+    try { return decodeURIComponent(v); } catch (_) { return v; }
+  }
+  const fromSrc = s.match(/[?&]src=([^&\s"']+)/i);
+  if (fromSrc) return tryDecode(fromSrc[1]);
+  const fromCid = s.match(/[?&]cid=([^&\s"']+)/i);
+  if (fromCid) {
+    const decoded = tryDecode(fromCid[1]);
+    // Google Calendar share links base64-encode the ID; direct links URL-encode it.
+    // If URL-decoding already gives an email-shaped value, use it as-is.
+    if (/^[^\s@]+@[^\s@]+$/.test(decoded) || decoded === "primary") return decoded;
+    try { return atob(decoded); } catch (_) { return decoded; }
+  }
   const fromPath = s.match(/([a-zA-Z0-9._+-]+(?:%40|@)[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/i);
-  if (fromPath) return decodeURIComponent(fromPath[1]);
+  if (fromPath) return tryDecode(fromPath[1]);
   return s;
 }
 
@@ -1254,11 +1343,11 @@ function renderSyncRules() {
   const body = document.getElementById("sync-rules-body");
   const cals = state.config.calendars;
   if (cals.length < 2) {
-    body.innerHTML = `<div class="empty">Add at least 2 calendars to configure sync rules.</div>`;
+    body.innerHTML = `<div class="empty">Add at least 2 calendars to configure sync rules. <button class="btn-link" onclick="goStep(1)" style="font-size:inherit;vertical-align:baseline">Go to Calendars →</button></div>`;
     return;
   }
   const matrix = buildMatrix(state.config);
-  const preset = detectPreset(matrix, cals.length);
+  const preset = detectPreset(matrix, cals);
   body.innerHTML = `
     <div class="preset-row">
       <button class="btn-preset${preset === "mesh" ? " on" : ""}" onclick="applyPreset('mesh')">Mesh — everyone to everyone</button>
@@ -1266,7 +1355,7 @@ function renderSyncRules() {
     </div>
     <p class="matrix-hint">Each row is a calendar. A lit node in that row means it is writing busy blocks to that column's calendar. Click any node to toggle a connection.</p>
     <div class="agg-target-row${preset === "aggregate" ? " on" : ""}" id="agg-row">
-      <label>Collect into</label>
+      <label>Aggregate target</label>
       <select id="agg-select" onchange="onAggChange(this.value)">
         <option value="">— select target —</option>
         ${cals.map(c => `<option value="${c.id}"${state.config.syncFlows.aggregateTarget === c.id ? " selected" : ""}>${esc(c.name || c.id)}</option>`).join("")}
@@ -1366,29 +1455,21 @@ function matrixToFlows(matrix, cals) {
   return { mode: "custom", aggregateTarget: null, customTargets: ct };
 }
 
-function detectPreset(matrix, n) {
-  let mesh = true;
-  L: for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (r !== c && !matrix[r][c]) { mesh = false; break L; }
-  if (mesh) return "mesh";
-  for (let t = 0; t < n; t++) {
-    let ok = true;
-    L2: for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-      if (r === c) continue;
-      if (matrix[r][c] !== (c === t)) { ok = false; break L2; }
-    }
-    if (ok) return "aggregate";
-  }
-  return "custom";
+function detectPreset(matrix, cals) {
+  return matrixToFlows(matrix, cals).mode;
 }
 
 function toggleNode(r, c) {
   const cals = state.config.calendars;
   const matrix = buildMatrix(state.config);
   matrix[r][c] = !matrix[r][c];
-  state.config.syncFlows = matrixToFlows(matrix, cals);
+  const newFlows = matrixToFlows(matrix, cals);
+  if (newFlows.mode === "custom") newFlows.aggregateTarget = state.config.syncFlows.aggregateTarget;
+  state.config.syncFlows = newFlows;
+  markDirty();
   const panel = document.getElementById("matrix-panel");
   if (panel) panel.innerHTML = renderMatrixHTML(matrix, cals);
-  const preset = detectPreset(matrix, cals.length);
+  const preset = detectPreset(matrix, cals);
   document.querySelectorAll(".btn-preset").forEach(b => {
     b.classList.toggle("on", (preset === "mesh" && b.textContent.startsWith("Mesh")) || (preset === "aggregate" && b.textContent.startsWith("Aggregate")));
   });
@@ -1411,6 +1492,7 @@ function applyPreset(preset) {
     const tId = (cur && cals.find(c => c.id === cur)) ? cur : cals[0].id;
     state.config.syncFlows = { mode: "aggregate", aggregateTarget: tId, customTargets: [] };
   }
+  markDirty();
   renderSyncRules();
 }
 
@@ -1420,6 +1502,7 @@ function onAggChange(targetId) {
   const matrix = buildMatrix(state.config);
   const panel = document.getElementById("matrix-panel");
   if (panel) panel.innerHTML = renderMatrixHTML(matrix, cals);
+  markDirty();
 }
 
 // ── Step 3: Settings ──────────────────────────────────────────────────────────
@@ -1547,6 +1630,15 @@ function buildFlowLogHTML(summary) {
   const OP_LABEL = { ins: "INS", patch: "UPD", del: "DEL", skip: "SKIP", err: "ERR", dupe: "DUPE" };
 
   let html = "";
+  if (summary.error) {
+    html += `<div class="log-entry">
+      <span class="log-op log-op-err">ERR</span>
+      <div class="log-entry-body">
+        <div class="log-title">Sync error</div>
+        <div class="log-err-msg">${esc(summary.error)}</div>
+      </div>
+    </div>`;
+  }
   for (const flow of summary.flows) {
     const targetLabel = calById[flow.target] || flow.target || "?";
     const srcLabels = (flow.srcCalIds || []).map(id => calById[id] || id);
@@ -1578,39 +1670,25 @@ function buildFlowLogHTML(summary) {
       continue;
     }
 
-    // Errors first for visibility
-    for (const e of entries) {
-      if (e.o !== "err") continue;
-      const time = e.s ? fmtLogTime(e.s) : "";
-      html += `<div class="log-entry">
-        <span class="log-op log-op-err">${OP_LABEL.err}</span>
-        <div class="log-entry-body">
-          <div class="log-title">${esc(e.t || "(untitled)")}</div>
-          <div class="log-err-msg">${esc(e.r || "")}: ${esc(e.e || "")}</div>
-        </div>
-        <span class="log-time">${time}</span>
-      </div>`;
-    }
-
-    // All other entries
-    for (const e of entries) {
-      if (e.o === "err") continue;
+    // Errors first, then everything else
+    const sorted = [...entries].sort((a, b) => (a.o === "err" ? -1 : 0) - (b.o === "err" ? -1 : 0));
+    for (const e of sorted) {
       const op = e.o;
       const lbl = OP_LABEL[op] || op.toUpperCase();
       const time = e.s ? fmtLogTime(e.s) : "";
-      let titleStr, reasonStr = "";
-      if (op === "dupe") {
-        titleStr = `Duplicate: ${esc(e.k || e.id || "")}`;
+      let body;
+      if (op === "err") {
+        body = `<div class="log-title">${esc(e.t || "(untitled)")}</div>
+          <div class="log-err-msg">${esc(e.r || "")}: ${esc(e.e || "")}</div>`;
+      } else if (op === "dupe") {
+        body = `<div class="log-title">Duplicate: ${esc(e.k || e.id || "")}</div>`;
       } else {
-        titleStr = esc(e.t || "(untitled)");
-        if (e.r) reasonStr = `<div class="log-reason">${esc(e.r)}</div>`;
+        body = `<div class="log-title">${esc(e.t || "(untitled)")}</div>
+          ${e.r ? `<div class="log-reason">${esc(e.r)}</div>` : ""}`;
       }
       html += `<div class="log-entry">
         <span class="log-op log-op-${op}">${lbl}</span>
-        <div class="log-entry-body">
-          <div class="log-title">${titleStr}</div>
-          ${reasonStr}
-        </div>
+        <div class="log-entry-body">${body}</div>
         <span class="log-time">${time}</span>
       </div>`;
     }
@@ -1632,53 +1710,112 @@ function fmtLogTime(iso) {
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
-function saveConfig() {
-  if (state.needsReview) return;
-  // Activating = go live; turn test mode off automatically
-  state.config.settings.testMode = false;
-  document.getElementById("test-mode").checked = false;
-  const btn = document.getElementById("save-btn");
+
+function _doSave(btnId, btnLabel, onSuccess) {
+  const btn = document.getElementById(btnId);
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>';
   google.script.run
-    .withSuccessHandler(() => {
+    .withSuccessHandler(result => {
       btn.disabled = false;
-      btn.innerHTML = '<span class="save-lbl">Save &amp; Activate</span>';
+      btn.innerHTML = `<span class="save-lbl">${btnLabel}</span>`;
+      if (result && !result.ok) {
+        toast(result.error || "Save failed.", "error");
+        onSuccess(false);
+        return;
+      }
+      state.isDirty = false;
       updateStatusBar();
-      toast("Settings saved — test mode disabled.", "success");
+      updateFooter();
+      onSuccess(true);
     })
     .withFailureHandler(err => {
       btn.disabled = false;
-      btn.innerHTML = '<span class="save-lbl">Save &amp; Activate</span>';
-      // Restore test mode on failure since save didn't go through
-      state.config.settings.testMode = true;
-      document.getElementById("test-mode").checked = true;
+      btn.innerHTML = `<span class="save-lbl">${btnLabel}</span>`;
       toast(err.message || "Save failed.", "error");
+      onSuccess(false);
     })
     .saveConfigFromSidebar(state.config);
+}
+
+function saveConfig() {
+  if (!state.isDirty) return;
+  _doSave("save-btn", "Save", ok => {
+    if (ok) toast("Settings saved.", "success");
+  });
+}
+
+function activateSync() {
+  if (state.needsReview) return;
+  if (!confirm("Activate will start writing busy blocks to your calendars. Continue?")) return;
+  const prev = state.config.settings.testMode;
+  state.config.settings.testMode = false;
+  document.getElementById("test-mode").checked = false;
+  _doSave("activate-btn", "Activate", ok => {
+    if (ok) {
+      toast("Sync activated.", "success");
+    } else {
+      state.config.settings.testMode = prev;
+      document.getElementById("test-mode").checked = prev;
+      updateStatusBar();
+      updateFooter();
+    }
+  });
+}
+
+function deactivateSync() {
+  if (!confirm("Deactivate will stop writing to your calendars. Existing busy blocks remain until you run Cleanup.")) return;
+  const prev = state.config.settings.testMode;
+  state.config.settings.testMode = true;
+  document.getElementById("test-mode").checked = true;
+  _doSave("deactivate-btn", "Deactivate", ok => {
+    if (ok) {
+      toast("Sync deactivated — running in Preview mode.", "success");
+    } else {
+      state.config.settings.testMode = prev;
+      document.getElementById("test-mode").checked = prev;
+      updateStatusBar();
+      updateFooter();
+    }
+  });
 }
 
 function runNow() {
   const btn = document.getElementById("run-now-btn");
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner spinner-dk"></span>';
+  // GAS max execution time is 6 min — restore UI if the callback never fires
+  const watchdog = setTimeout(() => {
+    btn.disabled = false;
+    btn.textContent = "Run now";
+    loadRunSummary();
+    toast("Sync is taking longer than expected. It may still complete in the background.", "");
+  }, 330000);
   google.script.run
-    .withSuccessHandler(summary => {
+    .withSuccessHandler(result => {
+      clearTimeout(watchdog);
       btn.disabled = false;
       btn.textContent = "Run now";
-      if (summary) renderRunSummary(summary);
+      if (result && result.skipped) {
+        loadRunSummary();
+        toast("Another sync is already running — will complete shortly.", "");
+        return;
+      }
+      if (result) renderRunSummary(result);
       toast("Sync complete.", "success");
     })
     .withFailureHandler(err => {
+      clearTimeout(watchdog);
       btn.disabled = false;
       btn.textContent = "Run now";
+      loadRunSummary();
       toast(err.message || "Sync failed.", "error");
     })
     .runSyncNow(state.config);
 }
 
 function openCleanup() {
-  // Deactivate numbered nav items and hide all numbered steps
+  state.currentStep = 0;
   [1, 2, 3, 4].forEach(i => {
     document.getElementById("nav-" + i).classList.remove("active");
     document.getElementById("step-" + i).classList.remove("on");
@@ -1724,24 +1861,20 @@ function confirmReset() {
   if (!confirm("Remove all saved settings and triggers?\n\nThis can be undone by reconfiguring and saving.")) return;
   google.script.run
     .withSuccessHandler(() => {
-      state.config = {
-        calendars: [],
-        syncFlows: { mode: "aggregate", aggregateTarget: null, customTargets: [] },
-        settings: { timeFrameDays: 30, frequency: "daily", syncOnUpdate: true, enableReminder: false, testMode: true }
-      };
-      state.calIdCounter = 0;
-      state.needsReview = false;
-      document.getElementById("review-badge").classList.remove("on");
-      renderCalendars();
-      renderSettings();
-      updateStatusBar();
-      updateSaveState();
-      document.getElementById("last-run-wrap").style.display = "none";
-      const noRun = document.getElementById("no-run-yet");
-      if (noRun) noRun.style.display = "none";
-      state.currentStep = 0;
-      goStep(1);
-      toast("Config reset.", "success");
+      google.script.run
+        .withSuccessHandler(data => {
+          state.calIdCounter = 0;
+          state.needsReview = false;
+          document.getElementById("review-badge").classList.remove("on");
+          document.getElementById("last-run-wrap").style.display = "none";
+          const noRun = document.getElementById("no-run-yet");
+          if (noRun) noRun.style.display = "none";
+          state.currentStep = 0;
+          init(data);
+          toast("Config reset.", "success");
+        })
+        .withFailureHandler(err => toast(err.message || "Reset failed.", "error"))
+        .getConfigForSidebar();
     })
     .withFailureHandler(err => toast(err.message || "Reset failed.", "error"))
     .resetConfig();
@@ -1753,7 +1886,8 @@ function esc(str) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function toast(msg, type) {

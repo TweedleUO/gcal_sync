@@ -53,7 +53,13 @@ function getConfigForSidebar() {
 
 function saveConfigFromSidebar(json) {
   const config = typeof json === "string" ? JSON.parse(json) : json;
-  PropertiesService.getScriptProperties().setProperty(PROP_CONFIG, JSON.stringify(config));
+  // Strip any client-injected metadata fields before persisting
+  delete config._scriptEmail;
+  const str = JSON.stringify(config);
+  if (str.length > 8800) {
+    return { ok: false, error: "Config too large to save (" + str.length + " chars). Reduce the number of calendars or custom sync rules." };
+  }
+  PropertiesService.getScriptProperties().setProperty(PROP_CONFIG, str);
   setupTriggers(config);
   return { ok: true };
 }
@@ -87,7 +93,7 @@ function resolveFlows(config) {
     for (const ct of (syncFlows.customTargets || [])) {
       const targetCal = calById[ct.target];
       if (!targetCal) continue;
-      const sourceCals = (ct.sources || []).map(id => calById[id]).filter(Boolean);
+      const sourceCals = (ct.sources || []).filter(id => id !== ct.target).map(id => calById[id]).filter(Boolean);
       if (sourceCals.length) flows.push({ targetCal, sourceCals });
     }
   }
@@ -158,6 +164,17 @@ function saveRunSummary(summary) {
       }
     }
   }
+  // Re-serialize after truncation, then final size guard before writing
+  str = JSON.stringify(data);
+  if (str.length > 8800) {
+    // Still over limit (e.g. Unicode-heavy error messages) — drop all flow details
+    for (const flow of (data.flows || [])) {
+      delete flow.flowLog;
+      flow.flowLogTruncated = true;
+    }
+    str = JSON.stringify(data);
+  }
+
   // Shift run slots: run_3→run_4, run_2→run_3, run_1→run_2, run_0→run_1
   const prop = PropertiesService.getScriptProperties();
   for (let i = MAX_RUNS - 1; i > 0; i--) {
@@ -165,7 +182,17 @@ function saveRunSummary(summary) {
     if (prev) prop.setProperty(PROP_RUN_PFX + i, prev);
     else prop.deleteProperty(PROP_RUN_PFX + i);
   }
-  prop.setProperty(PROP_RUN_PFX + "0", JSON.stringify(data));
+  try {
+    prop.setProperty(PROP_RUN_PFX + "0", str);
+  } catch (_) {
+    // Final fallback: store minimal summary without flow data
+    const minimal = { runId: data.runId, runType: data.runType, ts: data.ts,
+                      testMode: data.testMode, totalInserts: data.totalInserts,
+                      totalPatches: data.totalPatches, totalDeletes: data.totalDeletes,
+                      totalSkips: data.totalSkips, totalErrors: data.totalErrors,
+                      flows: [] };
+    try { prop.setProperty(PROP_RUN_PFX + "0", JSON.stringify(minimal)); } catch (_2) {}
+  }
 }
 
 function getLastRunSummary() {
@@ -193,7 +220,8 @@ function runSyncNow(configJson) {
     const config = typeof configJson === "string" ? JSON.parse(configJson) : configJson;
     PropertiesService.getScriptProperties().setProperty(PROP_CONFIG, JSON.stringify(config));
   }
-  calSync();
+  const result = calSync();
+  if (result && result.skipped) return { skipped: true };
   return getLastRunSummary();
 }
 
@@ -205,13 +233,18 @@ function runSyncNow(configJson) {
  */
 function cleanupCalendars(calendarIds, scope) {
   const config = getConfig();
-  const start = new Date(2000, 0, 1).toISOString();
-  const end = new Date(2100, 0, 1).toISOString();
+  const now = new Date();
+  const start = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate()).toISOString();
+  const end   = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()).toISOString();
   let removed = 0;
-  const blockFilter = scope === "all" ? isAnyManagedBlock : isManagedBlock;
 
   for (const calId of (calendarIds || [])) {
-    const events = listEvents(calId, start, end).filter(blockFilter);
+    if (!calId || !calId.trim()) continue;
+    // For account scope, use the server-side privateExtendedProperty filter (fast, indexed).
+    // For all-instances scope, fall back to a full scan with client-side filter.
+    const events = scope === "all"
+      ? listEvents(calId, start, end).filter(isAnyManagedBlock)
+      : listManagedBlocks(calId, start, end);
     for (const e of events) {
       if (!config.settings.testMode) {
         retry(() => Calendar.Events.remove(calId, e.id), "remove(cleanup)");

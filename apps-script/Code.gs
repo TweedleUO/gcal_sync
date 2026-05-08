@@ -26,7 +26,7 @@ function calSync(e) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(0)) {
     console.log(JSON.stringify({ level: "WARN", msg: "Another instance already running — skipping" }));
-    return;
+    return { skipped: true };
   }
 
   const runType = e && e.calendarId ? "calendar-update"
@@ -235,8 +235,9 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
 function syncWindow(days, tz) {
   const now = new Date();
   // Build midnight-in-script-timezone as a proper ISO offset string
-  const offsetFmt = Utilities.formatDate(now, tz, "Z");              // e.g. "-0500"
-  const offsetISO = offsetFmt.slice(0, 3) + ":" + offsetFmt.slice(3); // "-05:00"
+  const offsetFmt = Utilities.formatDate(now, tz, "Z");              // e.g. "-0500" or "Z" for UTC
+  const offsetISO = offsetFmt === "Z" ? "+00:00"
+                  : offsetFmt.slice(0, 3) + ":" + offsetFmt.slice(3); // "-05:00" / "+05:30"
   const todayStr  = Utilities.formatDate(now, tz, "yyyy-MM-dd");
   const min = new Date(todayStr + "T00:00:00" + offsetISO);
   const max = new Date(min);
@@ -246,42 +247,27 @@ function syncWindow(days, tz) {
 
 // ── Calendar API ──────────────────────────────────────────────────────────────
 
-function listEvents(calId, timeMinISO, timeMaxISO) {
+function fetchEvents(calId, timeMinISO, timeMaxISO, extra, label) {
   const results = [];
   let pageToken = null;
   do {
     const resp = retry(() => Calendar.Events.list(calId, {
-      timeMin: timeMinISO,
-      timeMax: timeMaxISO,
-      singleEvents: true,
-      orderBy: "startTime",
-      showDeleted: false,
-      maxResults: 2500,
-      pageToken
-    }), "Events.list");
+      timeMin: timeMinISO, timeMax: timeMaxISO,
+      singleEvents: true, showDeleted: false,
+      maxResults: 2500, pageToken, ...extra
+    }), label);
     if (resp.items?.length) results.push(...resp.items);
     pageToken = resp.nextPageToken || null;
   } while (pageToken);
   return results;
 }
 
+function listEvents(calId, timeMinISO, timeMaxISO) {
+  return fetchEvents(calId, timeMinISO, timeMaxISO, { orderBy: "startTime" }, "Events.list");
+}
+
 function listManagedBlocks(calId, timeMinISO, timeMaxISO) {
-  const results = [];
-  let pageToken = null;
-  do {
-    const resp = retry(() => Calendar.Events.list(calId, {
-      timeMin: timeMinISO,
-      timeMax: timeMaxISO,
-      singleEvents: true,
-      showDeleted: false,
-      maxResults: 2500,
-      privateExtendedProperty: `managedBy=${MANAGED_BY}`,
-      pageToken
-    }), "Events.list(managed)");
-    if (resp.items?.length) results.push(...resp.items);
-    pageToken = resp.nextPageToken || null;
-  } while (pageToken);
-  return results;
+  return fetchEvents(calId, timeMinISO, timeMaxISO, { privateExtendedProperty: `managedBy=${MANAGED_BY}` }, "Events.list(managed)");
 }
 
 function getBusy(calId, timeMinISO, timeMaxISO, log) {
@@ -421,7 +407,7 @@ function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, targetCal, tz }) {
     body.reminders = CONFIG.settings.enableReminder
       ? (srcEvent.reminders || { useDefault: true })
       : { useDefault: false };
-    if (srcEvent.attendees) {
+    if (srcEvent.attendees && srcEvent.attendees.length > 0) {
       // sendUpdates:'none' is passed at insert/patch time — attendees are copied for display only
       body.attendees = srcEvent.attendees.map(a => ({ email: a.email }));
     }
@@ -490,7 +476,7 @@ function retry(fn, label) {
       return fn();
     } catch (e) {
       const msg = e?.message ?? String(e);
-      const retryable = /429|Rate Limit|rateLimitExceeded|userRateLimitExceeded|backendError|Internal error|503|Service unavailable|Service invoked too many times/i.test(msg);
+      const retryable = /429|Rate Limit|rateLimitExceeded|userRateLimitExceeded|backendError|Backend Error|Internal error|503|Service unavailable|Service invoked too many times|quota/i.test(msg);
       if (!retryable || attempt === maxAttempts) {
         throw new Error(`${label} failed (attempt ${attempt}/${maxAttempts}): ${msg}`);
       }
@@ -526,7 +512,7 @@ function removeAllManagedBlocks() {
   const end   = new Date(2100, 0, 1).toISOString();
 
   for (const calId of targetCalIds) {
-    const events = listEvents(calId, start, end).filter(isManagedBlock);
+    const events = listManagedBlocks(calId, start, end);
     for (const e of events) {
       if (!config.settings.testMode) retry(() => Calendar.Events.remove(calId, e.id), "remove(cleanup)");
     }
