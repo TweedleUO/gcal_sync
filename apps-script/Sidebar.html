@@ -1,0 +1,1530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Calendar Sync</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f3f4f6;
+      --surface: #ffffff;
+      --border: #e5e7eb;
+      --text: #111827;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --accent-h: #1d4ed8;
+      --accent-light: #eff6ff;
+      --accent-border: #bfdbfe;
+      --danger: #dc2626;
+      --danger-light: #fef2f2;
+      --success: #16a34a;
+      --warn-bg: #fefce8;
+      --warn-border: #fde68a;
+      --warn-text: #92400e;
+      --review-bg: #fff7ed;
+      --review-border: #fed7aa;
+      --review-text: #c2410c;
+      --radius: 10px;
+      --radius-sm: 6px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+      --sidebar-w: 152px;
+      --status-h: 56px;
+      --mx-bg: #f1f5f9;
+      --mx-node: #e8edf3;
+      --mx-node-border: #cbd5e1;
+      --mx-node-hover: var(--accent-light);
+      --mx-node-hover-border: var(--accent-border);
+      --mx-lbl: var(--muted);
+      --mx-x: var(--border);
+      --mx-x-color: #94a3b8;
+      --mx-legend-border: var(--border);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --surface: #1e293b;
+        --border: #334155;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --accent: #3b82f6;
+        --accent-h: #60a5fa;
+        --accent-light: rgba(59,130,246,.12);
+        --accent-border: rgba(59,130,246,.35);
+        --danger: #f87171;
+        --danger-light: rgba(239,68,68,.1);
+        --success: #4ade80;
+        --warn-bg: rgba(234,179,8,.1);
+        --warn-border: rgba(234,179,8,.3);
+        --warn-text: #fde047;
+        --review-bg: rgba(249,115,22,.1);
+        --review-border: rgba(249,115,22,.3);
+        --review-text: #fb923c;
+        --shadow: 0 1px 3px rgba(0,0,0,.3);
+        --mx-bg: #020617;
+        --mx-node: rgba(255,255,255,.04);
+        --mx-node-border: rgba(255,255,255,.1);
+        --mx-node-hover: rgba(59,130,246,.1);
+        --mx-node-hover-border: rgba(59,130,246,.5);
+        --mx-lbl: rgba(255,255,255,.4);
+        --mx-x: transparent;
+        --mx-x-color: rgba(255,255,255,.15);
+        --mx-legend-border: rgba(255,255,255,.07);
+      }
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar status card ────────────────────────────────────────── */
+    .sidebar-status {
+      margin: 0 8px 8px;
+      padding: 10px 10px 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .sidebar-status-row {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 3px;
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0; transition: background .3s;
+    }
+    .status-dot.active { background: var(--success); box-shadow: 0 0 0 2px rgba(22,163,74,.2); }
+    .status-label { font-size: 12px; font-weight: 600; flex: 1; }
+    .status-test-pill {
+      font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 20px;
+      background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
+      letter-spacing: .04em; text-transform: uppercase; flex-shrink: 0;
+    }
+    .status-meta { font-size: 10px; color: var(--muted); line-height: 1.3; }
+
+    /* ── Shell ──────────────────────────────────────────────────────── */
+    .shell {
+      display: flex;
+      max-width: 680px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ────────────────────────────────────────────────────── */
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      padding: 16px 0 0;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .nav-steps { padding: 0 8px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; padding: 8px 10px;
+      border: none; border-radius: var(--radius-sm);
+      background: none; font-family: inherit; font-size: 13px;
+      color: var(--muted); cursor: pointer; text-align: left;
+      position: relative; transition: background .15s, color .15s;
+      margin-bottom: 2px;
+    }
+    .nav-item:hover:not(:disabled) { background: var(--bg); color: var(--text); }
+    .nav-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+    .nav-item.active .nav-num { background: var(--accent); color: white; }
+    .nav-item:disabled { opacity: .45; cursor: not-allowed; }
+    .nav-num {
+      width: 20px; height: 20px; border-radius: 50%;
+      background: var(--border); color: var(--muted);
+      font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: background .15s, color .15s;
+    }
+    .nav-lbl { flex: 1; }
+    .nav-badge {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #f97316; flex-shrink: 0; display: none;
+    }
+    .nav-badge.on { display: block; }
+    .sidebar-footer {
+      padding: 10px 8px 12px;
+      border-top: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .save-hint {
+      font-size: 10px; color: var(--review-text);
+      text-align: center; line-height: 1.3; padding: 2px 4px;
+      display: none;
+    }
+    .save-hint.on { display: block; }
+    .btn-save {
+      display: flex; align-items: center; justify-content: center; gap: 5px;
+      width: 100%; padding: 8px 10px;
+      background: var(--accent); color: white; border: none;
+      border-radius: var(--radius-sm); font-size: 12px; font-weight: 600;
+      font-family: inherit; cursor: pointer; transition: background .15s, opacity .15s;
+    }
+    .btn-save:hover { background: var(--accent-h); }
+    .btn-save:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-side-action {
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; padding: 6px 8px;
+      background: none; border: none; border-radius: var(--radius-sm);
+      font-size: 12px; color: var(--muted); font-family: inherit;
+      cursor: pointer; transition: color .15s, background .15s;
+    }
+    .btn-side-action:hover { color: var(--text); background: var(--bg); }
+    .btn-side-action.danger:hover { color: var(--danger); }
+
+    /* Narrow sidebar */
+    @media (max-width: 520px) {
+      :root { --sidebar-w: 50px; }
+      .nav-lbl, .save-lbl, .side-lbl { display: none; }
+      .nav-item { padding: 8px; justify-content: center; }
+      .nav-badge { position: absolute; top: 5px; right: 5px; }
+      .btn-save { padding: 8px 4px; }
+    }
+
+    /* ── Content ────────────────────────────────────────────────────── */
+    .content { flex: 1; padding: 24px 18px 56px; min-width: 0; }
+    .step { display: none; }
+    .step.on { display: block; }
+    .step-hdr { margin-bottom: 20px; }
+    .step-hdr-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+    .step-hdr h2 { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+    .step-hdr p { font-size: 13px; color: var(--muted); }
+
+    /* ── Calendar rows ──────────────────────────────────────────────── */
+    .cal-list { display: flex; flex-direction: column; gap: 8px; }
+    .cal-row {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+    }
+    .cal-summary {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; min-height: 48px;
+    }
+    .cal-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+    .cal-name { flex: 1; font-size: 14px; font-weight: 500; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cal-vis-pill {
+      font-size: 11px; color: var(--muted);
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 4px; padding: 2px 7px; white-space: nowrap; flex-shrink: 0;
+    }
+    .cal-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+    .btn-icon {
+      display: flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border: none; background: none;
+      border-radius: var(--radius-sm); cursor: pointer; color: var(--muted);
+      transition: color .15s, background .15s;
+    }
+    .btn-icon:hover { color: var(--text); background: var(--bg); }
+    .btn-icon.danger:hover { color: var(--danger); }
+    .cal-form { border-top: 1px solid var(--border); padding: 14px; display: none; }
+    .cal-form.on { display: block; }
+
+    /* ── Form elements ──────────────────────────────────────────────── */
+    .field { margin-bottom: 14px; }
+    .field:last-child { margin-bottom: 0; }
+    .label-row { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+    label { font-size: 13px; font-weight: 500; color: var(--text); }
+    input[type="text"], select {
+      width: 100%; padding: 8px 10px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      font-size: 13px; font-family: inherit; color: var(--text);
+      background: var(--surface); outline: none; transition: border-color .15s;
+    }
+    input[type="text"]:focus, select:focus { border-color: var(--accent); }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .divider {
+      display: flex; align-items: center; gap: 8px;
+      margin: 16px 0 12px; color: var(--muted);
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+    }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+    /* ── Visibility options ─────────────────────────────────────────── */
+    .vis-opt {
+      display: flex; align-items: flex-start; gap: 10px; padding: 10px;
+      border: 2px solid var(--border); border-radius: var(--radius-sm);
+      cursor: pointer; margin-bottom: 6px; transition: border-color .15s, background .15s;
+    }
+    .vis-opt:hover { border-color: var(--accent-border); }
+    .vis-opt.on { border-color: var(--accent); background: var(--accent-light); }
+    .vis-radio {
+      width: 15px; height: 15px; border: 2px solid var(--border);
+      border-radius: 50%; margin-top: 2px; flex-shrink: 0;
+      position: relative; transition: border-color .15s;
+    }
+    .vis-opt.on .vis-radio { border-color: var(--accent); }
+    .vis-opt.on .vis-radio::after {
+      content: ""; position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      width: 7px; height: 7px; background: var(--accent); border-radius: 50%;
+    }
+    .vis-title { font-size: 13px; font-weight: 600; }
+    .vis-desc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+
+    /* ── Toggle ─────────────────────────────────────────────────────── */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 0; min-height: 44px;
+    }
+    .toggle-lbl { display: flex; align-items: center; gap: 5px; font-size: 13px; }
+    .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+    .toggle input { display: none; }
+    .toggle-track {
+      position: absolute; inset: 0;
+      background: #d1d5db; border-radius: 20px; cursor: pointer; transition: background .2s;
+    }
+    @media (prefers-color-scheme: dark) { .toggle-track { background: #475569; } }
+    .toggle input:checked + .toggle-track { background: var(--accent); }
+    .toggle-thumb {
+      position: absolute; top: 2px; left: 2px;
+      width: 16px; height: 16px; background: white; border-radius: 50%;
+      transition: transform .2s; pointer-events: none;
+    }
+    .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
+
+    /* ── Notes ──────────────────────────────────────────────────────── */
+    .note { border-radius: var(--radius-sm); padding: 9px 11px; font-size: 12px; line-height: 1.45; }
+    .note-warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); }
+    .note-info { background: var(--accent-light); border: 1px solid var(--accent-border); color: var(--accent); }
+
+    /* ── Info tooltip ───────────────────────────────────────────────── */
+    .info {
+      position: relative; display: inline-flex; align-items: center; justify-content: center;
+      width: 15px; height: 15px; background: var(--border); color: var(--muted);
+      border-radius: 50%; font-size: 9px; font-weight: 700; cursor: default; flex-shrink: 0;
+    }
+    .info:hover::after {
+      content: attr(data-tip); position: absolute;
+      bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+      background: #1f2937; color: white; font-size: 11px; font-weight: 400;
+      padding: 6px 9px; border-radius: 5px; white-space: normal;
+      width: 220px; z-index: 100; line-height: 1.45; pointer-events: none;
+    }
+
+    /* ── Routing matrix ─────────────────────────────────────────────── */
+    .preset-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .btn-preset {
+      padding: 6px 14px; border: 1.5px solid var(--border); border-radius: 20px;
+      background: var(--surface); color: var(--muted);
+      font-size: 12px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: all .15s;
+    }
+    .btn-preset:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-preset.on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); }
+    .agg-target-row {
+      display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 10px 12px; margin-bottom: 14px;
+      background: var(--accent-light); border: 1px solid var(--accent-border);
+      border-radius: var(--radius-sm); font-size: 13px;
+    }
+    .agg-target-row.on { display: flex; }
+    .agg-target-row label { color: var(--accent); font-weight: 500; white-space: nowrap; }
+    .agg-target-row select { flex: 1; min-width: 120px; border-color: var(--accent-border); }
+    .matrix-panel {
+      background: var(--mx-bg); border: 1px solid var(--border);
+      border-radius: 12px; padding: 18px 18px 14px; overflow-x: auto;
+    }
+    .matrix-wrap { display: inline-block; min-width: max-content; }
+    .matrix-col-hdrs {
+      display: flex; gap: 6px; padding-left: 92px;
+      margin-bottom: 6px; align-items: flex-end; min-height: 64px;
+    }
+    .matrix-col-hdr {
+      width: 44px; flex-shrink: 0;
+      writing-mode: vertical-lr; transform: rotate(180deg);
+      font-size: 11px; color: var(--mx-lbl);
+      overflow: hidden; max-height: 64px;
+      white-space: nowrap; text-align: left;
+    }
+    .matrix-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .matrix-row-lbl {
+      width: 92px; flex-shrink: 0; font-size: 11px;
+      color: var(--mx-lbl); text-align: right; padding-right: 10px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .matrix-node {
+      width: 44px; height: 44px; border-radius: 50%;
+      border: 1.5px solid var(--mx-node-border);
+      background: var(--mx-node);
+      cursor: pointer; transition: all .15s;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .matrix-node:hover:not(.x):not(.on) {
+      border-color: var(--mx-node-hover-border); background: var(--mx-node-hover);
+    }
+    .matrix-node.on {
+      background: var(--accent); border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37,99,235,.2), 0 0 10px rgba(37,99,235,.3);
+    }
+    .matrix-node.on::after {
+      content: ''; width: 10px; height: 10px;
+      border-radius: 50%; background: rgba(255,255,255,.85);
+    }
+    .matrix-node.self {
+      background: var(--accent-light); border-color: var(--accent-border); cursor: default;
+    }
+    .matrix-node.self::after {
+      content: '◉'; font-size: 13px; color: var(--accent); line-height: 1;
+    }
+    .matrix-legend {
+      display: flex; gap: 16px; margin-top: 12px; padding-top: 11px;
+      border-top: 1px solid var(--mx-legend-border);
+    }
+    .matrix-leg-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--mx-lbl); }
+    .matrix-leg-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .matrix-leg-dot-off { background: var(--mx-node); border: 1px solid var(--mx-node-border); }
+    .matrix-empty { text-align: center; padding: 28px 16px; color: var(--muted); font-size: 13px; }
+    .matrix-hint { font-size: 11px; color: var(--muted); line-height: 1.5; margin-bottom: 14px; }
+
+    /* ── Activity section ───────────────────────────────────────────── */
+    .activity-run-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .run-log-details { margin-top: 8px; }
+    .run-log-details summary {
+      font-size: 12px; color: var(--accent); cursor: pointer;
+      list-style: none; display: inline-flex; align-items: center; gap: 4px;
+      user-select: none;
+    }
+    .run-log-details summary::-webkit-details-marker { display: none; }
+    .run-log-details summary::before {
+      content: "▶"; display: inline-block; font-size: 9px;
+      transition: transform .15s; transform-origin: center;
+    }
+    .run-log-details[open] summary::before { transform: rotate(90deg); }
+    .run-log-details[open] summary { margin-bottom: 6px; }
+
+    /* ── General buttons ────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 8px 16px; border-radius: var(--radius-sm); min-height: 44px;
+      font-size: 13px; font-weight: 500; font-family: inherit;
+      cursor: pointer; border: none; outline: none; transition: background .15s, opacity .15s;
+      white-space: nowrap;
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-h); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--bg); }
+    .btn-secondary:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-danger { background: var(--surface); color: var(--danger); border: 1px solid var(--border); }
+    .btn-danger:hover { background: var(--danger-light); border-color: var(--danger); }
+    .btn-link { background: none; border: none; color: var(--accent); font-size: 13px; font-weight: 500; cursor: pointer; padding: 0; }
+    .btn-link:hover { text-decoration: underline; }
+
+    /* ── Run summary ────────────────────────────────────────────────── */
+    .run-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+    .run-card-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .run-title { font-size: 13px; font-weight: 600; }
+    .run-stats { display: flex; gap: 12px; flex-wrap: wrap; }
+    .run-stat { font-size: 12px; color: var(--muted); }
+    .run-stat b { font-weight: 600; color: var(--text); }
+    .run-stat-error, .run-stat-error b { color: var(--danger); }
+    .runs-header {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--muted); margin-bottom: 8px;
+    }
+    .run-card + .run-card { margin-top: 6px; }
+    .run-card-old { opacity: .65; }
+    .run-status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      flex-shrink: 0; display: inline-block; vertical-align: middle;
+    }
+    .run-dot-ok    { background: var(--success); box-shadow: 0 0 0 2px rgba(22,163,74,.2); }
+    .run-dot-error { background: var(--danger);  box-shadow: 0 0 0 2px rgba(220,38,38,.2); }
+    .run-dot-warn  { background: #f59e0b;        box-shadow: 0 0 0 2px rgba(245,158,11,.2); }
+    .run-test-tag {
+      font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 20px;
+      background: var(--warn-bg); border: 1px solid var(--warn-border);
+      color: var(--warn-text); letter-spacing: .04em; text-transform: uppercase;
+      vertical-align: middle;
+    }
+    .run-type-lbl {
+      font-size: 11px; font-weight: 600; color: var(--text);
+    }
+
+    /* log container */
+    .run-log-entries {
+      margin-top: 8px; max-height: 280px; overflow-y: auto;
+      border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); padding: 4px 6px;
+    }
+    /* per-flow section header */
+    .log-flow-hdr {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted);
+      padding: 6px 0 3px; border-bottom: 1px solid var(--border);
+      margin-bottom: 2px;
+    }
+    .log-flow-hdr + .log-flow-hdr, .log-entry + .log-flow-hdr { margin-top: 8px; }
+    /* single log row */
+    .log-entry {
+      display: flex; align-items: flex-start; gap: 6px;
+      padding: 3px 0; border-bottom: 1px solid var(--border);
+      font-size: 11px; font-family: "SF Mono","Fira Code",monospace;
+    }
+    .log-entry:last-child { border-bottom: none; }
+    /* operation badge */
+    .log-op {
+      display: inline-block; flex-shrink: 0; min-width: 36px;
+      padding: 1px 4px; border-radius: 3px;
+      font-weight: 700; font-size: 10px; text-align: center;
+    }
+    .log-op-ins   { background: #dcfce7; color: #166534; }
+    .log-op-patch { background: #dbeafe; color: #1e40af; }
+    .log-op-del   { background: #fef3c7; color: #92400e; }
+    .log-op-skip  { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+    .log-op-err   { background: #fee2e2; color: #dc2626; }
+    .log-op-dupe  { background: #fff7ed; color: #c2410c; }
+    /* title + reason */
+    .log-entry-body { flex: 1; min-width: 0; }
+    .log-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+    .log-reason { font-size: 10px; color: var(--muted); }
+    .log-err-msg { font-size: 10px; color: var(--danger); }
+    /* timestamp */
+    .log-time { flex-shrink: 0; font-size: 10px; color: var(--muted); white-space: nowrap; }
+    /* empty / truncated notices */
+    .log-no-changes { font-size: 11px; color: var(--muted); font-style: italic; padding: 3px 0; }
+    .log-truncated  { font-size: 10px; color: var(--warn-text); padding: 3px 0; }
+
+    @media (prefers-color-scheme: dark) {
+      .log-op-ins   { background: #14532d; color: #86efac; }
+      .log-op-patch { background: #1e3a5f; color: #93c5fd; }
+      .log-op-del   { background: #451a03; color: #fcd34d; }
+      .log-op-err   { background: #7f1d1d; color: #fca5a5; }
+      .log-op-dupe  { background: #431407; color: #fdba74; }
+    }
+
+    /* ── Cleanup panel ──────────────────────────────────────────────── */
+    .cleanup-panel {
+      margin-top: 16px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 14px;
+      display: none;
+    }
+    .cleanup-panel.on { display: block; }
+
+    /* ── Empty / toast / spinner ────────────────────────────────────── */
+    .empty {
+      text-align: center; padding: 32px 20px; color: var(--muted); font-size: 13px;
+      background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius);
+    }
+    .toast {
+      position: fixed; bottom: 20px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1f2937; color: white; padding: 10px 18px;
+      border-radius: 6px; font-size: 13px;
+      transition: transform .25s ease; z-index: 200; white-space: nowrap;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.error { background: #dc2626; }
+    .toast.success { background: #16a34a; }
+    .spinner {
+      display: inline-block; width: 13px; height: 13px;
+      border: 2px solid rgba(255,255,255,.35); border-top-color: white;
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    .spinner-dk { border-color: rgba(0,0,0,.12); border-top-color: var(--accent); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .skel {
+      background: linear-gradient(90deg, var(--border) 25%, var(--bg) 50%, var(--border) 75%);
+      background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  </style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-status" id="sidebar-status">
+      <div class="sidebar-status-row">
+        <div class="status-dot" id="status-dot"></div>
+        <span class="status-label" id="status-label">Inactive</span>
+        <span class="status-test-pill" id="test-pill" style="display:none">Test</span>
+      </div>
+      <div class="status-meta" id="status-meta">Not yet activated</div>
+    </div>
+    <div class="nav-steps">
+      <button class="nav-item active" id="nav-1" onclick="goStep(1)">
+        <span class="nav-num">1</span>
+        <span class="nav-lbl">Calendars</span>
+      </button>
+      <button class="nav-item" id="nav-2" onclick="goStep(2)">
+        <span class="nav-num">2</span>
+        <span class="nav-lbl">Sync Rules</span>
+        <span class="nav-badge" id="review-badge"></span>
+      </button>
+      <button class="nav-item" id="nav-3" onclick="goStep(3)">
+        <span class="nav-num">3</span>
+        <span class="nav-lbl">Schedule</span>
+      </button>
+      <button class="nav-item" id="nav-4" onclick="goStep(4)">
+        <span class="nav-num">4</span>
+        <span class="nav-lbl">Activity</span>
+      </button>
+    </div>
+    <div class="sidebar-footer">
+      <div class="save-hint" id="save-hint">Review Sync Rules first</div>
+      <button class="btn-save" id="save-btn" onclick="saveConfig()">
+        <span class="save-lbl">Save &amp; Activate</span>
+      </button>
+      <button class="btn-side-action" onclick="openCleanup()">
+        <span class="side-lbl">Cleanup</span>
+      </button>
+      <button class="btn-side-action danger" onclick="confirmReset()">
+        <span class="side-lbl">Reset config</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="content">
+
+    <!-- Loading skeleton -->
+    <div id="loading">
+      <div class="skel" style="height:14px;width:55%;margin-bottom:12px"></div>
+      <div class="skel" style="height:48px;border-radius:10px;margin-bottom:8px"></div>
+      <div class="skel" style="height:48px;border-radius:10px;margin-bottom:8px"></div>
+    </div>
+
+    <!-- Step 1: Calendars -->
+    <div class="step" id="step-1">
+      <div class="step-hdr">
+        <div class="step-hdr-row">
+          <h2>Calendars</h2>
+          <button class="btn-link" onclick="addCalendar()">+ Add calendar</button>
+        </div>
+        <p>Add the Google Calendars you want to sync.</p>
+      </div>
+      <div class="cal-list" id="cal-list"></div>
+      <div id="cal-empty" class="empty" style="display:none">
+        No calendars added yet. Click <strong>+ Add calendar</strong> to get started.
+      </div>
+    </div>
+
+    <!-- Step 2: Sync Rules -->
+    <div class="step" id="step-2">
+      <div class="step-hdr">
+        <h2>Sync Rules</h2>
+        <p>Define which calendars share busy time with each other.</p>
+      </div>
+      <div id="sync-rules-body"></div>
+    </div>
+
+    <!-- Step 3: Schedule -->
+    <div class="step" id="step-3">
+      <div class="step-hdr">
+        <h2>Schedule</h2>
+        <p>Configure when syncs run automatically.</p>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)">
+        <div class="field">
+          <div class="label-row">
+            <label>Sync window</label>
+            <span class="info" data-tip="How many days ahead to sync. Longer windows use more API quota.">i</span>
+          </div>
+          <select id="time-frame" onchange="state.config.settings.timeFrameDays = +this.value">
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30">30 days</option>
+            <option value="60">60 days</option>
+            <option value="90">90 days</option>
+          </select>
+        </div>
+        <div class="field">
+          <div class="label-row">
+            <label>Auto-sync frequency</label>
+            <span class="info" data-tip="How often the sync runs automatically. Daily at midnight is recommended for most users.">i</span>
+          </div>
+          <select id="frequency" onchange="state.config.settings.frequency = this.value">
+            <option value="every15">Every 15 minutes</option>
+            <option value="every30">Every 30 minutes</option>
+            <option value="hourly">Hourly</option>
+            <option value="every4h">Every 4 hours</option>
+            <option value="daily">Daily at midnight (recommended)</option>
+          </select>
+        </div>
+        <div class="divider">Triggers</div>
+        <div class="toggle-row">
+          <div class="toggle-lbl">
+            <span>Also sync when a calendar is updated</span>
+            <span class="info" data-tip="Triggers a sync whenever a source calendar changes. Works alongside the scheduled frequency.">i</span>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="sync-on-update" onchange="state.config.settings.syncOnUpdate = this.checked">
+            <div class="toggle-track"></div><div class="toggle-thumb"></div>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-lbl">
+            <span>Enable reminders on blocked events</span>
+            <span class="info" data-tip="When off, blocked events have no reminders. Recommended off for most users.">i</span>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="enable-reminder" onchange="state.config.settings.enableReminder = this.checked">
+            <div class="toggle-track"></div><div class="toggle-thumb"></div>
+          </label>
+        </div>
+      </div>
+
+    </div><!-- /step-3 -->
+
+    <!-- Step 4: Activity -->
+    <div class="step" id="step-4">
+      <div class="step-hdr">
+        <h2>Activity</h2>
+        <p>Run syncs manually, review recent activity, and manage test mode.</p>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);margin-bottom:16px">
+        <div class="toggle-row" style="min-height:auto;padding:0">
+          <div class="toggle-lbl">
+            <span style="font-weight:500">Test mode</span>
+            <span class="info" data-tip="When on, syncs run but nothing is written to your calendars. Save & Activate will turn this off.">i</span>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="test-mode" onchange="state.config.settings.testMode = this.checked; updateStatusBar()">
+            <div class="toggle-track"></div><div class="toggle-thumb"></div>
+          </label>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45">Syncs run in read-only mode — nothing is written to your calendars. Click <strong>Run Now</strong> below to preview what would sync, then use Save &amp; Activate when you're ready to go live.</p>
+      </div>
+
+      <div class="activity-run-row">
+        <button class="btn btn-primary" id="run-now-btn" onclick="runNow()">Run now</button>
+        <span style="font-size:12px;color:var(--muted)">Runs a full sync immediately using your current settings.</span>
+      </div>
+
+      <div id="last-run-wrap" style="display:none"></div>
+
+      <div id="no-run-yet" style="display:none;margin-top:4px">
+        <div class="empty">No runs yet. Click <strong>Run now</strong> above or wait for the scheduled sync.</div>
+      </div>
+
+      <div class="cleanup-panel" id="cleanup-panel" style="margin-top:16px">
+        <div class="field">
+          <div class="label-row"><label>Select calendar(s) to clean</label></div>
+          <div id="cleanup-checks" style="margin-top:6px"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-danger" onclick="runCleanup()">Remove managed blocks</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('cleanup-panel').classList.remove('on')">Cancel</button>
+        </div>
+      </div>
+
+    </div><!-- /step-4 -->
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const state = {
+  config: null,
+  calIdCounter: 0,
+  currentStep: 0,
+  needsReview: false
+};
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  google.script.run
+    .withSuccessHandler(init)
+    .withFailureHandler(err => {
+      document.getElementById("loading").textContent = "Failed to load: " + (err.message || err);
+    })
+    .getConfigForSidebar();
+});
+
+function init(config) {
+  state.config = config;
+  state.calIdCounter = config.calendars.length;
+  document.getElementById("loading").style.display = "none";
+  renderCalendars();
+  renderSettings();
+  updateStatusBar();
+  loadRunSummary();
+  updateSaveState();
+  goStep(1);
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function goStep(n) {
+  if (state.currentStep === n) return;
+  state.currentStep = n;
+  if (n === 2) {
+    if (state.needsReview) {
+      state.needsReview = false;
+      document.getElementById("review-badge").classList.remove("on");
+      updateSaveState();
+    }
+    renderSyncRules();
+  }
+  [1, 2, 3, 4].forEach(i => {
+    document.getElementById("nav-" + i).classList.toggle("active", i === n);
+    document.getElementById("step-" + i).classList.toggle("on", i === n);
+  });
+}
+
+// ── Status bar ────────────────────────────────────────────────────────────────
+function updateStatusBar() {
+  const active = state.config && state.config.calendars.length > 0;
+  document.getElementById("status-dot").classList.toggle("active", active);
+  document.getElementById("status-label").textContent = active ? "Active" : "Inactive";
+  const testMode = state.config && state.config.settings.testMode;
+  document.getElementById("test-pill").style.display = testMode ? "inline-flex" : "none";
+}
+
+function updateStatusMeta(summary) {
+  if (!summary || !summary.ts) return;
+  document.getElementById("status-meta").textContent = "Last run: " + relTime(new Date(summary.ts));
+}
+
+function relTime(d) {
+  const m = Math.floor((Date.now() - d) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  return Math.floor(h / 24) + "d ago";
+}
+
+// ── Save state ────────────────────────────────────────────────────────────────
+function updateSaveState() {
+  const blocked = state.needsReview;
+  document.getElementById("save-btn").disabled = blocked;
+  document.getElementById("save-hint").classList.toggle("on", blocked);
+}
+
+function markReview() {
+  state.needsReview = true;
+  document.getElementById("review-badge").classList.add("on");
+  updateSaveState();
+}
+
+// ── Step 1: Calendars ─────────────────────────────────────────────────────────
+function renderCalendars() {
+  const list  = document.getElementById("cal-list");
+  const empty = document.getElementById("cal-empty");
+  list.innerHTML = "";
+  if (!state.config.calendars.length) { empty.style.display = "block"; return; }
+  empty.style.display = "none";
+  state.config.calendars.forEach(cal => list.appendChild(buildCalRow(cal)));
+}
+
+function buildCalRow(cal) {
+  const div = document.createElement("div");
+  div.className = "cal-row";
+  div.id = "cal-row-" + cal.id;
+  const badge = { fullyPrivate: "Fully Private", private: "Private", mirror: "As-Is" };
+  div.innerHTML = `
+    <div class="cal-summary">
+      <div class="cal-dot"></div>
+      <div class="cal-name" id="cal-name-${cal.id}">${esc(cal.name || cal.id)}</div>
+      <span class="cal-vis-pill" id="cal-badge-${cal.id}">${badge[cal.visibility] || "Fully Private"}</span>
+      <div class="cal-actions">
+        <button class="btn-icon" onclick="toggleCalForm('${cal.id}')" title="Edit" aria-label="Edit ${esc(cal.name || cal.id)}">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M11.5 2.5l2 2L5 13H3v-2L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="btn-icon danger" onclick="removeCalendar(event,'${cal.id}')" title="Remove" aria-label="Remove ${esc(cal.name || cal.id)}">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="cal-form" id="cal-form-${cal.id}">${buildCalForm(cal)}</div>
+  `;
+  return div;
+}
+
+function buildCalForm(cal) {
+  const isMirror = cal.visibility === "mirror";
+  return `
+    <div class="field">
+      <div class="label-row"><label>Label</label></div>
+      <input type="text" value="${esc(cal.name || "")}" placeholder="e.g. Work, Personal"
+             oninput="updateCalField('${cal.id}','name',this.value);document.getElementById('cal-name-${cal.id}').textContent=this.value||'${esc(cal.id)}'">
+    </div>
+    <div class="field">
+      <div class="label-row">
+        <label>Calendar ID or link</label>
+        <span class="info" data-tip="Paste a Google Calendar link or enter the ID directly (e.g. you@gmail.com).">i</span>
+      </div>
+      <input type="text" value="${esc(cal.calendarId)}" placeholder="you@gmail.com or calendar link"
+             oninput="onCalIdInput(this,'${cal.id}')">
+    </div>
+    <div class="divider">When this calendar receives synced events</div>
+    <div class="field">
+      <div class="label-row"><label>Visibility</label></div>
+      ${buildVisOpts(cal)}
+      <div id="vis-sub-${cal.id}" style="margin-top:4px">${buildVisSub(cal)}</div>
+    </div>
+    <div class="field" id="block-title-field-${cal.id}"${isMirror ? ' style="display:none"' : ""}>
+      <div class="label-row">
+        <label>Block title</label>
+        <span class="info" data-tip="Text shown as the event title for blocked events. Defaults to 'Blocked'.">i</span>
+      </div>
+      <input type="text" value="${esc(cal.blockTitle || "Blocked")}" placeholder="Blocked"
+             oninput="updateCalField('${cal.id}','blockTitle',this.value)">
+    </div>
+    <div class="divider">Filters</div>
+    <div class="toggle-row">
+      <div class="toggle-lbl">
+        <span>Accept all-day events</span>
+        <span class="info" data-tip="When on, all-day events from source calendars are blocked on this calendar.">i</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" ${cal.acceptAllDayEvents ? "checked" : ""}
+               onchange="updateCalField('${cal.id}','acceptAllDayEvents',this.checked)">
+        <div class="toggle-track"></div><div class="toggle-thumb"></div>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <div class="toggle-lbl">
+        <span>Allow double-booking</span>
+        <span class="info" data-tip="When off, blocks are skipped if the target time slot is already busy.">i</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" ${cal.allowDoubleBooking ? "checked" : ""}
+               onchange="updateCalField('${cal.id}','allowDoubleBooking',this.checked)">
+        <div class="toggle-track"></div><div class="toggle-thumb"></div>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <div class="toggle-lbl">
+        <span>Weekday events only</span>
+        <span class="info" data-tip="When on, weekend events from source calendars are not blocked on this calendar.">i</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" ${cal.weekdayEventsOnly ? "checked" : ""}
+               onchange="updateCalField('${cal.id}','weekdayEventsOnly',this.checked)">
+        <div class="toggle-track"></div><div class="toggle-thumb"></div>
+      </label>
+    </div>
+  `;
+}
+
+function buildVisOpts(cal) {
+  const opts = [
+    { v: "fullyPrivate", t: "Fully Private", d: "Only the block title is visible. No details are exposed to anyone, including organization administrators." },
+    { v: "private",      t: "Private",       d: "Choose the block title or show the original event title. Note: organization administrators can see the title." },
+    { v: "mirror",       t: "As-Is",         d: "All event details are passed through as-is, including the original privacy settings." }
+  ];
+  return opts.map(o => `
+    <div class="vis-opt${cal.visibility === o.v ? " on" : ""}" onclick="selectVis('${cal.id}','${o.v}',this)">
+      <div class="vis-radio"></div>
+      <div><div class="vis-title">${o.t}</div><div class="vis-desc">${o.d}</div></div>
+    </div>
+  `).join("");
+}
+
+function buildVisSub(cal) {
+  if (cal.visibility === "private") return `
+    <div class="toggle-row" style="padding-top:6px">
+      <div class="toggle-lbl">
+        <span>Show original event title</span>
+        <span class="info" data-tip="When on, the original event title is used instead of the block title.">i</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" ${cal.privateShowOriginalTitle ? "checked" : ""}
+               onchange="updateCalField('${cal.id}','privateShowOriginalTitle',this.checked)">
+        <div class="toggle-track"></div><div class="toggle-thumb"></div>
+      </label>
+    </div>`;
+  if (cal.visibility === "mirror") return `<div class="note note-warn" style="margin-top:6px">Recurring events become individual instances on the target calendar — the recurrence rule is not carried over.</div>`;
+  return "";
+}
+
+function selectVis(calId, value, el) {
+  const cal = getCalById(calId);
+  if (!cal) return;
+  cal.visibility = value;
+  el.closest(".field").querySelectorAll(".vis-opt").forEach(o => o.classList.toggle("on", o === el));
+  document.getElementById("vis-sub-" + calId).innerHTML = buildVisSub(cal);
+  const badges = { fullyPrivate: "Fully Private", private: "Private", mirror: "As-Is" };
+  document.getElementById("cal-badge-" + calId).textContent = badges[value] || value;
+  const bf = document.getElementById("block-title-field-" + calId);
+  if (bf) bf.style.display = value === "mirror" ? "none" : "";
+}
+
+function toggleCalForm(calId) {
+  const form = document.getElementById("cal-form-" + calId);
+  const wasOpen = form.classList.contains("on");
+  document.querySelectorAll(".cal-form.on").forEach(f => f.classList.remove("on"));
+  if (!wasOpen) form.classList.add("on");
+}
+
+function addCalendar() {
+  const id = "cal_" + (++state.calIdCounter);
+  const cal = {
+    id, name: "Calendar" + state.calIdCounter, provider: "google", calendarId: "",
+    blockTitle: "Blocked", visibility: "fullyPrivate",
+    privateShowOriginalTitle: false, weekdayEventsOnly: false,
+    acceptAllDayEvents: true, allowDoubleBooking: true
+  };
+  state.config.calendars.push(cal);
+  document.getElementById("cal-empty").style.display = "none";
+  const row = buildCalRow(cal);
+  document.getElementById("cal-list").appendChild(row);
+  document.getElementById("cal-form-" + id).classList.add("on");
+  markReview();
+}
+
+function removeCalendar(evt, calId) {
+  evt.stopPropagation();
+  state.config.calendars = state.config.calendars.filter(c => c.id !== calId);
+  document.getElementById("cal-row-" + calId)?.remove();
+  if (!state.config.calendars.length) document.getElementById("cal-empty").style.display = "block";
+  markReview();
+}
+
+function onCalIdInput(input, calId) {
+  const parsed = parseCalendarId(input.value);
+  if (parsed !== input.value) input.value = parsed;
+  updateCalField(calId, "calendarId", parsed);
+}
+
+function updateCalField(calId, field, value) {
+  const cal = getCalById(calId);
+  if (cal) cal[field] = value;
+}
+
+function getCalById(id) {
+  return state.config.calendars.find(c => c.id === id) || null;
+}
+
+// ── Calendar ID parser ────────────────────────────────────────────────────────
+function parseCalendarId(input) {
+  const s = (input || "").trim();
+  if (!s) return s;
+  if (/^[^\s@]+@[^\s@]+$/.test(s) || s === "primary") return s;
+  const fromSrc  = s.match(/[?&]src=([^&\s"']+)/i);
+  if (fromSrc)  return decodeURIComponent(fromSrc[1]);
+  const fromCid  = s.match(/[?&]cid=([^&\s"']+)/i);
+  if (fromCid)  return decodeURIComponent(fromCid[1]);
+  const fromPath = s.match(/([a-zA-Z0-9._+-]+(?:%40|@)[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/i);
+  if (fromPath) return decodeURIComponent(fromPath[1]);
+  return s;
+}
+
+// ── Step 2: Sync Rules / Matrix ───────────────────────────────────────────────
+function renderSyncRules() {
+  const body = document.getElementById("sync-rules-body");
+  const cals = state.config.calendars;
+  if (cals.length < 2) {
+    body.innerHTML = `<div class="empty">Add at least 2 calendars to configure sync rules.</div>`;
+    return;
+  }
+  const matrix = buildMatrix(state.config);
+  const preset = detectPreset(matrix, cals.length);
+  body.innerHTML = `
+    <div class="preset-row">
+      <button class="btn-preset${preset === "mesh" ? " on" : ""}" onclick="applyPreset('mesh')">Mesh — everyone to everyone</button>
+      <button class="btn-preset${preset === "aggregate" ? " on" : ""}" onclick="applyPreset('aggregate')">Aggregate — all to one</button>
+    </div>
+    <p class="matrix-hint">Each row is a calendar. A lit node in that row means it is writing busy blocks to that column's calendar. Click any node to toggle a connection.</p>
+    <div class="agg-target-row${preset === "aggregate" ? " on" : ""}" id="agg-row">
+      <label>Collect into</label>
+      <select id="agg-select" onchange="onAggChange(this.value)">
+        <option value="">— select target —</option>
+        ${cals.map(c => `<option value="${c.id}"${state.config.syncFlows.aggregateTarget === c.id ? " selected" : ""}>${esc(c.name || c.id)}</option>`).join("")}
+      </select>
+    </div>
+    <div class="matrix-panel" id="matrix-panel">${renderMatrixHTML(matrix, cals)}</div>
+  `;
+}
+
+function renderMatrixHTML(matrix, cals) {
+  const colHdrs = cals.map(c => `<div class="matrix-col-hdr">${esc(shortLbl(c))}</div>`).join("");
+  let rows = "";
+  for (let r = 0; r < cals.length; r++) {
+    let nodes = "";
+    for (let c = 0; c < cals.length; c++) {
+      if (r === c) {
+        nodes += `<div class="matrix-node self" title="${esc(cals[r].name || cals[r].id)}" role="presentation"></div>`;
+      } else {
+        const on = matrix[r][c];
+        nodes += `<button class="matrix-node${on ? " on" : ""}"
+          onclick="toggleNode(${r},${c})"
+          aria-label="Sync from ${esc(cals[r].name||cals[r].id)} to ${esc(cals[c].name||cals[c].id)}"
+          aria-pressed="${on}"></button>`;
+      }
+    }
+    rows += `<div class="matrix-row"><div class="matrix-row-lbl">${esc(shortLbl(cals[r]))}</div>${nodes}</div>`;
+  }
+  return `<div class="matrix-wrap">
+    <div class="matrix-col-hdrs">${colHdrs}</div>
+    ${rows}
+    <div class="matrix-legend">
+      <div class="matrix-leg-item">
+        <div class="matrix-leg-dot" style="background:var(--accent);box-shadow:0 0 6px rgba(37,99,235,.5)"></div>Writing to
+      </div>
+      <div class="matrix-leg-item">
+        <div class="matrix-leg-dot matrix-leg-dot-off"></div>Not connected
+      </div>
+      <div class="matrix-leg-item">
+        <span style="font-size:12px;color:var(--accent);line-height:1">◉</span>Self (no sync)
+      </div>
+    </div>
+  </div>`;
+}
+
+function shortLbl(cal) {
+  const s = cal.name || cal.calendarId || cal.id;
+  return s.length > 16 ? s.slice(0, 15) + "…" : s;
+}
+
+function buildMatrix(config) {
+  const cals = config.calendars;
+  const n = cals.length;
+  const idx = {};
+  cals.forEach((c, i) => { idx[c.id] = i; });
+  const m = Array.from({ length: n }, () => Array(n).fill(false));
+  const sf = config.syncFlows;
+  if (sf.mode === "mesh") {
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (r !== c) m[r][c] = true;
+  } else if (sf.mode === "aggregate") {
+    const t = idx[sf.aggregateTarget];
+    if (t !== undefined) for (let r = 0; r < n; r++) if (r !== t) m[r][t] = true;
+  } else if (sf.mode === "custom") {
+    for (const ct of (sf.customTargets || [])) {
+      const t = idx[ct.target];
+      if (t === undefined) continue;
+      for (const sid of (ct.sources || [])) {
+        const s = idx[sid];
+        if (s !== undefined) m[s][t] = true;
+      }
+    }
+  }
+  return m;
+}
+
+function matrixToFlows(matrix, cals) {
+  const n = cals.length;
+  // Detect mesh
+  let mesh = true;
+  L: for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (r !== c && !matrix[r][c]) { mesh = false; break L; }
+  if (mesh) return { mode: "mesh", aggregateTarget: null, customTargets: [] };
+  // Detect aggregate
+  for (let t = 0; t < n; t++) {
+    let ok = true;
+    L2: for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      if (r === c) continue;
+      if (matrix[r][c] !== (c === t)) { ok = false; break L2; }
+    }
+    if (ok) return { mode: "aggregate", aggregateTarget: cals[t].id, customTargets: [] };
+  }
+  // Custom
+  const ct = [];
+  for (let c = 0; c < n; c++) {
+    const sources = [];
+    for (let r = 0; r < n; r++) if (r !== c && matrix[r][c]) sources.push(cals[r].id);
+    if (sources.length) ct.push({ target: cals[c].id, sources });
+  }
+  return { mode: "custom", aggregateTarget: null, customTargets: ct };
+}
+
+function detectPreset(matrix, n) {
+  let mesh = true;
+  L: for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (r !== c && !matrix[r][c]) { mesh = false; break L; }
+  if (mesh) return "mesh";
+  for (let t = 0; t < n; t++) {
+    let ok = true;
+    L2: for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      if (r === c) continue;
+      if (matrix[r][c] !== (c === t)) { ok = false; break L2; }
+    }
+    if (ok) return "aggregate";
+  }
+  return "custom";
+}
+
+function toggleNode(r, c) {
+  const cals = state.config.calendars;
+  const matrix = buildMatrix(state.config);
+  matrix[r][c] = !matrix[r][c];
+  state.config.syncFlows = matrixToFlows(matrix, cals);
+  const panel = document.getElementById("matrix-panel");
+  if (panel) panel.innerHTML = renderMatrixHTML(matrix, cals);
+  const preset = detectPreset(matrix, cals.length);
+  document.querySelectorAll(".btn-preset").forEach(b => {
+    b.classList.toggle("on", (preset === "mesh" && b.textContent.startsWith("Mesh")) || (preset === "aggregate" && b.textContent.startsWith("Aggregate")));
+  });
+  const aggRow = document.getElementById("agg-row");
+  if (aggRow) aggRow.classList.toggle("on", preset === "aggregate");
+}
+
+function applyPreset(preset) {
+  const cals = state.config.calendars;
+  if (preset === "mesh") {
+    state.config.syncFlows = { mode: "mesh", aggregateTarget: null, customTargets: [] };
+  } else if (preset === "aggregate") {
+    const cur = state.config.syncFlows.aggregateTarget;
+    const tId = (cur && cals.find(c => c.id === cur)) ? cur : cals[0].id;
+    state.config.syncFlows = { mode: "aggregate", aggregateTarget: tId, customTargets: [] };
+  }
+  renderSyncRules();
+}
+
+function onAggChange(targetId) {
+  state.config.syncFlows.aggregateTarget = targetId;
+  const cals = state.config.calendars;
+  const matrix = buildMatrix(state.config);
+  const panel = document.getElementById("matrix-panel");
+  if (panel) panel.innerHTML = renderMatrixHTML(matrix, cals);
+}
+
+// ── Step 3: Settings ──────────────────────────────────────────────────────────
+function renderSettings() {
+  const s = state.config.settings;
+  document.getElementById("time-frame").value = String(s.timeFrameDays || 30);
+  document.getElementById("frequency").value = s.frequency || "daily";
+  document.getElementById("sync-on-update").checked = !!s.syncOnUpdate;
+  document.getElementById("enable-reminder").checked = !!s.enableReminder;
+  document.getElementById("test-mode").checked = !!s.testMode;
+}
+
+// ── Run summary ───────────────────────────────────────────────────────────────
+function loadRunSummary() {
+  google.script.run
+    .withSuccessHandler(renderRunSummary)
+    .withFailureHandler(() => {})
+    .getLastRunSummary();
+}
+
+function renderRunSummary(runs) {
+  const noRun = document.getElementById("no-run-yet");
+  const wrap  = document.getElementById("last-run-wrap");
+  const list  = Array.isArray(runs) ? runs : (runs ? [runs] : []);
+  if (!list.length) {
+    noRun.style.display = "block";
+    wrap.style.display  = "none";
+    return;
+  }
+  noRun.style.display = "none";
+  wrap.style.display  = "block";
+  wrap.innerHTML = `<div class="runs-header">Recent Runs</div>` +
+    list.map((r, i) => buildRunCard(r, i === 0)).join("");
+  updateStatusMeta(list[0]);
+}
+
+const RUN_TYPE_LABELS = {
+  "manual":          "Manual",
+  "scheduled":       "Scheduled",
+  "calendar-update": "Calendar Update",
+  "cleanup":         "Cleanup"
+};
+
+function buildRunCard(summary, isLatest) {
+  const ts          = summary.ts ? new Date(summary.ts).toLocaleString() : "—";
+  const hasErr      = summary.error || (summary.totalErrors || 0) > 0;
+  const hasWarn     = !!summary.warning;
+  const dotCls      = hasErr ? "run-dot-error" : hasWarn ? "run-dot-warn" : "run-dot-ok";
+  const testTag     = summary.testMode ? ' <span class="run-test-tag">test</span>' : "";
+  const runTypeLbl  = RUN_TYPE_LABELS[summary.runType] || "Manual";
+
+  let statsHTML;
+  if (summary.warning) {
+    statsHTML = `<span style="color:var(--warn-text)">${esc(summary.warning)}</span>`;
+  } else if (summary.runType === "cleanup") {
+    const errCnt = summary.totalErrors || 0;
+    statsHTML = `
+      <span class="run-stat">Removed <b>${summary.removed || 0}</b></span>
+      <span class="run-stat${errCnt > 0 ? " run-stat-error" : ""}">Errors <b>${errCnt}</b></span>`;
+  } else {
+    const errCnt = summary.totalErrors || 0;
+    statsHTML = `
+      <span class="run-stat">Inserted <b>${summary.totalInserts || 0}</b></span>
+      <span class="run-stat">Updated <b>${summary.totalPatches || 0}</b></span>
+      <span class="run-stat">Removed <b>${summary.totalDeletes || 0}</b></span>
+      <span class="run-stat">Skipped <b>${summary.totalSkips || 0}</b></span>
+      <span class="run-stat${errCnt > 0 ? " run-stat-error" : ""}">Errors <b>${errCnt}</b></span>`;
+  }
+
+  const hasLogContent = (summary.flows && summary.flows.length > 0)
+    || summary.error || summary.runType === "cleanup";
+  const logSection = hasLogContent
+    ? `<details class="run-log-details"><summary>Show log</summary>` +
+      `<div class="run-log-entries">${buildFlowLogHTML(summary)}</div></details>`
+    : "";
+
+  return `<div class="run-card${isLatest ? "" : " run-card-old"}">
+    <div class="run-card-row">
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="run-status-dot ${dotCls}"></span>
+        <span class="run-type-lbl">${runTypeLbl}</span>
+      </div>
+      <span class="run-title">${ts}${testTag}</span>
+    </div>
+    <div class="run-stats">${statsHTML}</div>
+    ${logSection}
+  </div>`;
+}
+
+function buildFlowLogHTML(summary) {
+  // Cleanup run
+  if (summary.runType === "cleanup") {
+    const n = summary.removed || 0;
+    if (!n) return '<div class="log-no-changes">No managed blocks found to remove.</div>';
+    return `<div class="log-entry">
+      <span class="log-op log-op-del">DEL</span>
+      <div class="log-entry-body"><div class="log-title">${n} managed block${n !== 1 ? "s" : ""} removed</div></div>
+    </div>`;
+  }
+  // Top-level sync error before any flows ran
+  if (summary.error && (!summary.flows || !summary.flows.length)) {
+    return `<div class="log-entry">
+      <span class="log-op log-op-err">ERR</span>
+      <div class="log-entry-body">
+        <div class="log-title">Sync failed</div>
+        <div class="log-err-msg">${esc(summary.error)}</div>
+      </div>
+    </div>`;
+  }
+  if (summary.warning && (!summary.flows || !summary.flows.length)) {
+    return `<div class="log-no-changes">${esc(summary.warning)}</div>`;
+  }
+  if (!summary.flows || !summary.flows.length) {
+    return '<div class="log-no-changes">No flow details available.</div>';
+  }
+
+  const calById = {};
+  if (state.config && state.config.calendars) {
+    for (const c of state.config.calendars) {
+      calById[c.id] = c.name || c.calendarId;
+      calById[c.calendarId] = c.name || c.calendarId;
+    }
+  }
+
+  const OP_LABEL = { ins: "INS", patch: "UPD", del: "DEL", skip: "SKIP", err: "ERR", dupe: "DUPE" };
+
+  let html = "";
+  for (const flow of summary.flows) {
+    const targetLabel = calById[flow.target] || flow.target || "?";
+    const srcLabels = (flow.srcCalIds || []).map(id => calById[id] || id);
+    html += `<div class="log-flow-hdr">${esc(srcLabels.join(", "))} → ${esc(targetLabel)}</div>`;
+
+    const entries = flow.flowLog || [];
+    if (!entries.length) {
+      const agg = [
+        { o: "ins",   count: flow.inserts, label: "inserted" },
+        { o: "patch", count: flow.patches, label: "updated" },
+        { o: "del",   count: flow.deletes, label: "removed" },
+        { o: "skip",  count: flow.skips,   label: "skipped" },
+        { o: "err",   count: flow.errors,  label: "error(s)" }
+      ].filter(x => x.count);
+      if (!agg.length) {
+        html += `<div class="log-no-changes">No changes.</div>`;
+      } else {
+        for (const { o, count, label } of agg) {
+          html += `<div class="log-entry">
+            <span class="log-op log-op-${o}">${OP_LABEL[o]}</span>
+            <div class="log-entry-body"><div class="log-title">${count} event${count !== 1 ? "s" : ""} ${label}</div></div>
+          </div>`;
+        }
+        html += `<div class="log-truncated" style="margin-top:2px">Per-event detail not stored for older runs.</div>`;
+      }
+      if (flow.flowLogTruncated) {
+        html += `<div class="log-truncated">Log was truncated to fit storage limits.</div>`;
+      }
+      continue;
+    }
+
+    // Errors first for visibility
+    for (const e of entries) {
+      if (e.o !== "err") continue;
+      const time = e.s ? fmtLogTime(e.s) : "";
+      html += `<div class="log-entry">
+        <span class="log-op log-op-err">${OP_LABEL.err}</span>
+        <div class="log-entry-body">
+          <div class="log-title">${esc(e.t || "(untitled)")}</div>
+          <div class="log-err-msg">${esc(e.r || "")}: ${esc(e.e || "")}</div>
+        </div>
+        <span class="log-time">${time}</span>
+      </div>`;
+    }
+
+    // All other entries
+    for (const e of entries) {
+      if (e.o === "err") continue;
+      const op = e.o;
+      const lbl = OP_LABEL[op] || op.toUpperCase();
+      const time = e.s ? fmtLogTime(e.s) : "";
+      let titleStr, reasonStr = "";
+      if (op === "dupe") {
+        titleStr = `Duplicate: ${esc(e.k || e.id || "")}`;
+      } else {
+        titleStr = esc(e.t || "(untitled)");
+        if (e.r) reasonStr = `<div class="log-reason">${esc(e.r)}</div>`;
+      }
+      html += `<div class="log-entry">
+        <span class="log-op log-op-${op}">${lbl}</span>
+        <div class="log-entry-body">
+          <div class="log-title">${titleStr}</div>
+          ${reasonStr}
+        </div>
+        <span class="log-time">${time}</span>
+      </div>`;
+    }
+
+    if (flow.flowLogTruncated) {
+      html += `<div class="log-truncated">⚠ Log truncated — too many entries to store.</div>`;
+    }
+  }
+  return html;
+}
+
+function fmtLogTime(iso) {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  } catch (_) { return iso; }
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+function saveConfig() {
+  if (state.needsReview) return;
+  // Activating = go live; turn test mode off automatically
+  state.config.settings.testMode = false;
+  document.getElementById("test-mode").checked = false;
+  const btn = document.getElementById("save-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  google.script.run
+    .withSuccessHandler(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="save-lbl">Save &amp; Activate</span>';
+      updateStatusBar();
+      toast("Settings saved — test mode disabled.", "success");
+    })
+    .withFailureHandler(err => {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="save-lbl">Save &amp; Activate</span>';
+      // Restore test mode on failure since save didn't go through
+      state.config.settings.testMode = true;
+      document.getElementById("test-mode").checked = true;
+      toast(err.message || "Save failed.", "error");
+    })
+    .saveConfigFromSidebar(state.config);
+}
+
+function runNow() {
+  const btn = document.getElementById("run-now-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-dk"></span>';
+  google.script.run
+    .withSuccessHandler(summary => {
+      btn.disabled = false;
+      btn.textContent = "Run now";
+      if (summary) renderRunSummary(summary);
+      toast("Sync complete.", "success");
+    })
+    .withFailureHandler(err => {
+      btn.disabled = false;
+      btn.textContent = "Run now";
+      toast(err.message || "Sync failed.", "error");
+    })
+    .runSyncNow();
+}
+
+function openCleanup() {
+  const panel = document.getElementById("cleanup-panel");
+  const checks = document.getElementById("cleanup-checks");
+  checks.innerHTML = state.config.calendars.length
+    ? state.config.calendars.map(c => `
+        <label style="display:flex;align-items:center;gap:6px;margin-bottom:5px;font-weight:400;cursor:pointer;font-size:13px;min-height:44px">
+          <input type="checkbox" value="${esc(c.calendarId)}">
+          ${esc(c.name || c.calendarId)}
+        </label>`).join("")
+    : '<span style="color:var(--muted);font-size:13px">No calendars configured.</span>';
+  panel.classList.add("on");
+  goStep(4);
+}
+
+function runCleanup() {
+  const checked = [...document.querySelectorAll("#cleanup-checks input:checked")].map(el => el.value);
+  if (!checked.length) { toast("Select at least one calendar.", "error"); return; }
+  google.script.run
+    .withSuccessHandler(result => {
+      document.getElementById("cleanup-panel").classList.remove("on");
+      toast(`Removed ${result.removed} managed block(s) from selected calendar(s).${result.testMode ? " (test mode — nothing written)" : ""}`, "success");
+    })
+    .withFailureHandler(err => toast(err.message || "Cleanup failed.", "error"))
+    .cleanupCalendars(checked);
+}
+
+function confirmReset() {
+  if (!confirm("Remove all saved settings and triggers?\n\nThis can be undone by reconfiguring and saving.")) return;
+  google.script.run
+    .withSuccessHandler(() => {
+      state.config = {
+        calendars: [],
+        syncFlows: { mode: "aggregate", aggregateTarget: null, customTargets: [] },
+        settings: { timeFrameDays: 30, frequency: "daily", syncOnUpdate: true, enableReminder: false, testMode: true }
+      };
+      state.calIdCounter = 0;
+      state.needsReview = false;
+      document.getElementById("review-badge").classList.remove("on");
+      renderCalendars();
+      renderSettings();
+      updateStatusBar();
+      updateSaveState();
+      document.getElementById("last-run-wrap").style.display = "none";
+      const noRun = document.getElementById("no-run-yet");
+      if (noRun) noRun.style.display = "none";
+      state.currentStep = 0;
+      goStep(1);
+      toast("Config reset.", "success");
+    })
+    .withFailureHandler(err => toast(err.message || "Reset failed.", "error"))
+    .resetConfig();
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function esc(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function toast(msg, type) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = "toast" + (type ? " " + type : "");
+  void el.offsetWidth;
+  el.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove("show"), 3500);
+}
+</script>
+
+</body>
+</html>
