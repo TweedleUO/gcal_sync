@@ -1687,13 +1687,11 @@ function openCleanup() {
   const checks = document.getElementById("cleanup-checks");
   checks.innerHTML = state.config.calendars.length
     ? state.config.calendars.map(c => {
-        const dotClass = document.getElementById("cal-dot-" + c.id)?.className || "cal-dot";
         const calId = esc(c.calendarId);
         return `<div class="cleanup-cal-item">
           <button class="matrix-node" data-cal-id="${calId}"
                   onclick="this.classList.toggle('on'); this.setAttribute('aria-pressed', this.classList.contains('on'))"
                   aria-pressed="false" aria-label="Select ${esc(c.name || c.calendarId)}"></button>
-          <div class="${dotClass}"></div>
           <div class="cleanup-cal-meta">
             <div class="cal-name">${esc(c.name || c.calendarId)}</div>
             ${c.calendarId ? `<div class="cleanup-cal-id">${calId}</div>` : ""}
