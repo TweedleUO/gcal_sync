@@ -46,7 +46,9 @@ function getConfig() {
 }
 
 function getConfigForSidebar() {
-  return getConfig();
+  const config = getConfig();
+  try { config._scriptEmail = Session.getEffectiveUser().getEmail(); } catch (_) {}
+  return config;
 }
 
 function saveConfigFromSidebar(json) {
@@ -225,6 +227,20 @@ function cleanupCalendars(calendarIds) {
     totalSkips: 0, totalErrors: 0
   });
   return result;
+}
+
+function subscribeToCalendar(calId) {
+  if (!calId || !calId.trim()) return { ok: false, reason: "no-id" };
+  try {
+    Calendar.CalendarList.insert({ id: calId.trim() });
+    return validateCalendar(calId.trim());
+  } catch (e) {
+    const msg = (e.message || "").toLowerCase();
+    const reason = (msg.includes("not found") || msg.includes("404")) ? "not-found"
+                 : (msg.includes("forbidden") || msg.includes("403")) ? "no-access"
+                 : "error";
+    return { ok: false, reason, error: e.message };
+  }
 }
 
 function validateCalendar(calId) {

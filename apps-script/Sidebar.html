@@ -247,6 +247,16 @@
     .cal-access-ok   { color: #16a34a; }
     .cal-access-warn { color: #d97706; }
     .cal-access-err  { color: var(--danger); }
+    .cal-access-btn {
+      font-size: 12px; padding: 0; border: none; background: none;
+      color: var(--accent); cursor: pointer; text-decoration: underline;
+    }
+    .cal-legend {
+      display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+      margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+      font-size: 11px; color: var(--muted);
+    }
+    .cal-legend span { display: flex; align-items: center; gap: 5px; }
     .cal-dot.ok   { background: #16a34a; }
     .cal-dot.warn { background: #d97706; }
     .cal-dot.err  { background: var(--danger); }
@@ -640,6 +650,11 @@
       <div id="cal-empty" class="empty" style="display:none">
         No calendars added yet. Click <strong>+ Add calendar</strong> to get started.
       </div>
+      <div class="cal-legend">
+        <span><span class="cal-dot ok"></span>Read &amp; write</span>
+        <span><span class="cal-dot warn"></span>Read only (source only)</span>
+        <span><span class="cal-dot err"></span>Not found / no access</span>
+      </div>
     </div>
 
     <!-- Step 2: Sync Rules -->
@@ -775,7 +790,8 @@ const state = {
   config: null,
   calIdCounter: 0,
   currentStep: 0,
-  needsReview: false
+  needsReview: false,
+  scriptEmail: ""
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -790,7 +806,10 @@ document.addEventListener("DOMContentLoaded", () => {
     .getConfigForSidebar();
 });
 
-function init(config) {
+function init(data) {
+  state.scriptEmail = data._scriptEmail || "";
+  const config = { ...data };
+  delete config._scriptEmail;
   state.config = config;
   state.calIdCounter = config.calendars.length;
   document.getElementById("loading").style.display = "none";
@@ -1155,20 +1174,39 @@ function applyAccessResult(res, id) {
   const dotEl    = document.getElementById("cal-dot-" + id);
   if (!statusEl) return;
   if (!res.ok) {
-    const msg = res.reason === "not-found"
-      ? "Calendar not found — check the ID or make sure it has been shared with you."
-      : res.reason === "no-access"
-      ? "Access denied — share this calendar with the account running this script."
-      : esc(res.error || "Could not verify access.");
-    statusEl.innerHTML = `<span class="cal-access-err">✗ ${msg}</span>`;
+    const calId = getCalById(id)?.calendarId || "";
+    const addBtn = calId
+      ? ` <button class="cal-access-btn" onclick="subscribeCalendar('${esc(calId)}','${id}')">Add to my account</button>`
+      : "";
+    let html;
+    if (res.reason === "no-access") {
+      const emailNote = state.scriptEmail
+        ? ` Ask the owner to share it with <strong>${esc(state.scriptEmail)}</strong> and set "Make changes to events".`
+        : ` Ask the owner to share it and grant "Make changes to events" permission.`;
+      html = `<span class="cal-access-err">✗ Access denied.</span>${emailNote}`;
+    } else if (res.reason === "not-found") {
+      html = `<span class="cal-access-err">✗ Not found</span> — check the ID, or try:${addBtn}`;
+    } else {
+      html = `<span class="cal-access-err">✗ ${esc(res.error || "Could not verify access.")}</span>${addBtn}`;
+    }
+    statusEl.innerHTML = html;
     if (dotEl) dotEl.className = "cal-dot err";
   } else if (!res.canWrite) {
-    statusEl.innerHTML = `<span class="cal-access-warn">⚠ ${esc(res.name)} — read-only access. Can be used as a source but not as a target.</span>`;
+    statusEl.innerHTML = `<span class="cal-access-warn">⚠ ${esc(res.name)} — read-only. Can be a source but not a target.</span>`;
     if (dotEl) dotEl.className = "cal-dot warn";
   } else {
     statusEl.innerHTML = `<span class="cal-access-ok">✓ ${esc(res.name)}</span>`;
     if (dotEl) dotEl.className = "cal-dot ok";
   }
+}
+
+function subscribeCalendar(calendarId, id) {
+  const statusEl = document.getElementById("cal-access-" + id);
+  if (statusEl) statusEl.innerHTML = `<span style="color:var(--muted)">Adding to your account…</span>`;
+  google.script.run
+    .withSuccessHandler(res => applyAccessResult(res, id))
+    .withFailureHandler(err => applyAccessResult({ ok: false, reason: "error", error: err.message }, id))
+    .subscribeToCalendar(calendarId);
 }
 
 // ── Calendar ID parser ────────────────────────────────────────────────────────

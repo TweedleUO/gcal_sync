@@ -3,6 +3,7 @@
 
 # build output
 dist/
+preview.html
 
 # dependencies
 node_modules/

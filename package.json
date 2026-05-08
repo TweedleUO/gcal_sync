@@ -5,6 +5,7 @@
   "scripts": {
     "bundle": "node scripts/bundle.js",
     "push": "clasp push --rootDir ./apps-script",
+    "preview": "node build-preview.js",
     "test": "jest",
     "test:watch": "jest --watch"
   },
