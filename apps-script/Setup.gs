@@ -227,6 +227,21 @@ function cleanupCalendars(calendarIds) {
   return result;
 }
 
+function validateCalendar(calId) {
+  if (!calId || !calId.trim()) return { ok: false, reason: "no-id" };
+  try {
+    const cal = Calendar.Calendars.get(calId.trim());
+    const canWrite = ["owner", "writer"].includes(cal.accessRole);
+    return { ok: true, name: cal.summary || calId, accessRole: cal.accessRole, canWrite };
+  } catch (e) {
+    const msg = (e.message || "").toLowerCase();
+    const reason = (msg.includes("not found") || msg.includes("404")) ? "not-found"
+                 : (msg.includes("forbidden") || msg.includes("403")) ? "no-access"
+                 : "error";
+    return { ok: false, reason, error: e.message };
+  }
+}
+
 function resetConfig() {
   const props = PropertiesService.getScriptProperties();
   props.deleteProperty(PROP_CONFIG);

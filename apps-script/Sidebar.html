@@ -234,6 +234,28 @@
     .btn-icon.danger:hover { color: var(--danger); }
     .cal-form { border-top: 1px solid var(--border); padding: 14px; display: none; }
     .cal-form.on { display: block; }
+    .cal-drag-handle {
+      cursor: grab; color: var(--muted); padding: 0 2px; flex-shrink: 0;
+      opacity: 0.4; transition: opacity .15s; display: flex; align-items: center; touch-action: none;
+    }
+    .cal-drag-handle:hover { opacity: 1; }
+    .cal-drag-handle:active { cursor: grabbing; opacity: 1; }
+    .cal-row.dragging { opacity: 0.4; }
+    .cal-row.drag-before { box-shadow: 0 -2px 0 var(--accent); }
+    .cal-row.drag-after  { box-shadow: 0 2px 0 var(--accent); }
+    .cal-access-status { font-size: 12px; margin-top: 6px; line-height: 1.4; }
+    .cal-access-ok   { color: #16a34a; }
+    .cal-access-warn { color: #d97706; }
+    .cal-access-err  { color: var(--danger); }
+    .cal-dot.ok   { background: #16a34a; }
+    .cal-dot.warn { background: #d97706; }
+    .cal-dot.err  { background: var(--danger); }
+    @media (prefers-color-scheme: dark) {
+      .cal-access-ok { color: #4ade80; }
+      .cal-access-warn { color: #fbbf24; }
+      .cal-dot.ok   { background: #4ade80; }
+      .cal-dot.warn { background: #fbbf24; }
+    }
 
     /* ── Form elements ──────────────────────────────────────────────── */
     .field { margin-bottom: 14px; }
@@ -773,6 +795,7 @@ function init(config) {
   state.calIdCounter = config.calendars.length;
   document.getElementById("loading").style.display = "none";
   renderCalendars();
+  config.calendars.forEach(cal => { if (cal.calendarId) checkCalAccess(cal.calendarId, cal.id); });
   renderSettings();
   updateStatusBar();
   loadRunSummary();
@@ -848,10 +871,22 @@ function buildCalRow(cal) {
   const div = document.createElement("div");
   div.className = "cal-row";
   div.id = "cal-row-" + cal.id;
+  div.addEventListener("dragover",  e => onDragOver(e, cal.id));
+  div.addEventListener("drop",      e => onDrop(e, cal.id));
+  div.addEventListener("dragleave", e => onDragLeave(e));
   const badge = { fullyPrivate: "Fully Private", private: "Private", mirror: "As-Is" };
   div.innerHTML = `
     <div class="cal-summary">
-      <div class="cal-dot"></div>
+      <div class="cal-drag-handle" draggable="true"
+           ondragstart="onDragStart(event,'${cal.id}')" ondragend="onDragEnd()"
+           title="Drag to reorder" aria-label="Drag to reorder">
+        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" aria-hidden="true">
+          <circle cx="3" cy="2" r="1.5"/><circle cx="7" cy="2" r="1.5"/>
+          <circle cx="3" cy="7" r="1.5"/><circle cx="7" cy="7" r="1.5"/>
+          <circle cx="3" cy="12" r="1.5"/><circle cx="7" cy="12" r="1.5"/>
+        </svg>
+      </div>
+      <div class="cal-dot" id="cal-dot-${cal.id}"></div>
       <div class="cal-name" id="cal-name-${cal.id}">${esc(cal.name || cal.id)}</div>
       <span class="cal-vis-pill" id="cal-badge-${cal.id}">${badge[cal.visibility] || "Fully Private"}</span>
       <div class="cal-actions">
@@ -886,7 +921,9 @@ function buildCalForm(cal) {
         <span class="info" data-tip="Paste a Google Calendar link or enter the ID directly (e.g. you@gmail.com).">i</span>
       </div>
       <input type="text" value="${esc(cal.calendarId)}" placeholder="you@gmail.com or calendar link"
-             oninput="onCalIdInput(this,'${cal.id}')">
+             oninput="onCalIdInput(this,'${cal.id}')"
+             onblur="onCalIdBlur(this,'${cal.id}')">
+      <div id="cal-access-${cal.id}" class="cal-access-status"></div>
     </div>
     <div class="divider">When this calendar receives synced events</div>
     <div class="field">
@@ -1017,6 +1054,17 @@ function onCalIdInput(input, calId) {
   const parsed = parseCalendarId(input.value);
   if (parsed !== input.value) input.value = parsed;
   updateCalField(calId, "calendarId", parsed);
+  const statusEl = document.getElementById("cal-access-" + calId);
+  if (statusEl) statusEl.innerHTML = "";
+  const dotEl = document.getElementById("cal-dot-" + calId);
+  if (dotEl) dotEl.className = "cal-dot";
+}
+
+function onCalIdBlur(input, calId) {
+  const parsed = parseCalendarId(input.value);
+  if (parsed !== input.value) input.value = parsed;
+  updateCalField(calId, "calendarId", parsed);
+  checkCalAccess(parsed, calId);
 }
 
 function updateCalField(calId, field, value) {
@@ -1026,6 +1074,101 @@ function updateCalField(calId, field, value) {
 
 function getCalById(id) {
   return state.config.calendars.find(c => c.id === id) || null;
+}
+
+// ── Drag & Drop ───────────────────────────────────────────────────────────────
+let _dragSrc = null;
+
+function onDragStart(e, calId) {
+  _dragSrc = calId;
+  e.dataTransfer.effectAllowed = "move";
+  const row = document.getElementById("cal-row-" + calId);
+  if (row) e.dataTransfer.setDragImage(row, 24, 24);
+  setTimeout(() => row && row.classList.add("dragging"), 0);
+}
+
+function onDragEnd() {
+  if (_dragSrc) document.getElementById("cal-row-" + _dragSrc)?.classList.remove("dragging");
+  _dragSrc = null;
+  document.querySelectorAll(".cal-row").forEach(r => r.classList.remove("drag-before", "drag-after"));
+}
+
+function onDragOver(e, calId) {
+  if (!_dragSrc || _dragSrc === calId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  const row = document.getElementById("cal-row-" + calId);
+  const rect = row.getBoundingClientRect();
+  const before = e.clientY < rect.top + rect.height / 2;
+  document.querySelectorAll(".cal-row").forEach(r => r.classList.remove("drag-before", "drag-after"));
+  row.classList.add(before ? "drag-before" : "drag-after");
+}
+
+function onDragLeave(e) {
+  if (!e.currentTarget.contains(e.relatedTarget)) {
+    e.currentTarget.classList.remove("drag-before", "drag-after");
+  }
+}
+
+function onDrop(e, targetCalId) {
+  e.preventDefault();
+  const srcId = _dragSrc;
+  onDragEnd();
+  if (!srcId || srcId === targetCalId) return;
+
+  const cals = state.config.calendars;
+  const srcIdx = cals.findIndex(c => c.id === srcId);
+  const tgtRow = document.getElementById("cal-row-" + targetCalId);
+  const rect = tgtRow.getBoundingClientRect();
+  const insertAfter = e.clientY >= rect.top + rect.height / 2;
+
+  const [moved] = cals.splice(srcIdx, 1);
+  const newTgtIdx = cals.findIndex(c => c.id === targetCalId);
+  cals.splice(insertAfter ? newTgtIdx + 1 : newTgtIdx, 0, moved);
+
+  const srcRow = document.getElementById("cal-row-" + srcId);
+  if (insertAfter) tgtRow.after(srcRow);
+  else tgtRow.before(srcRow);
+
+  markReview();
+}
+
+// ── Calendar access validation ────────────────────────────────────────────────
+function checkCalAccess(calendarId, id) {
+  const statusEl = document.getElementById("cal-access-" + id);
+  const dotEl    = document.getElementById("cal-dot-" + id);
+  if (!statusEl) return;
+  if (!calendarId) {
+    statusEl.innerHTML = "";
+    if (dotEl) dotEl.className = "cal-dot";
+    return;
+  }
+  statusEl.innerHTML = `<span style="color:var(--muted)">Checking access…</span>`;
+  google.script.run
+    .withSuccessHandler(res => applyAccessResult(res, id))
+    .withFailureHandler(err => applyAccessResult({ ok: false, reason: "error", error: err.message }, id))
+    .validateCalendar(calendarId);
+}
+
+function applyAccessResult(res, id) {
+  const statusEl = document.getElementById("cal-access-" + id);
+  const dotEl    = document.getElementById("cal-dot-" + id);
+  if (!statusEl) return;
+  if (!res.ok) {
+    const msg = res.reason === "not-found"
+      ? "Calendar not found — check the ID or make sure it has been shared with you."
+      : res.reason === "no-access"
+      ? "Access denied — share this calendar with the account running this script."
+      : esc(res.error || "Could not verify access.");
+    statusEl.innerHTML = `<span class="cal-access-err">✗ ${msg}</span>`;
+    if (dotEl) dotEl.className = "cal-dot err";
+  } else if (!res.canWrite) {
+    statusEl.innerHTML = `<span class="cal-access-warn">⚠ ${esc(res.name)} — read-only access. Can be used as a source but not as a target.</span>`;
+    if (dotEl) dotEl.className = "cal-dot warn";
+  } else {
+    statusEl.innerHTML = `<span class="cal-access-ok">✓ ${esc(res.name)}</span>`;
+    if (dotEl) dotEl.className = "cal-dot ok";
+  }
 }
 
 // ── Calendar ID parser ────────────────────────────────────────────────────────
