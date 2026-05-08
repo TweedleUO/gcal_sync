@@ -1149,7 +1149,7 @@ function buildCalForm(cal) {
              onblur="onCalIdBlur(this,'${cal.id}')">
       <div id="cal-access-${cal.id}" class="cal-access-status"></div>
     </div>
-    <div class="divider">When this calendar receives synced events</div>
+    <div class="divider">When this calendar's events are synced to others</div>
     <div class="field">
       <div class="label-row"><label>Visibility</label></div>
       ${buildVisOpts(cal)}
@@ -1158,12 +1158,12 @@ function buildCalForm(cal) {
     <div class="field" id="block-title-field-${cal.id}"${isMirror ? ' style="display:none"' : ""}>
       <div class="label-row">
         <label>Block title</label>
-        <span class="info" tabindex="0" data-tip="Text shown as the event title for blocked events. Defaults to 'Blocked'.">i</span>
+        <span class="info" tabindex="0" data-tip="The event title used when this calendar's events are blocked on other calendars. Defaults to 'Blocked'.">i</span>
       </div>
       <input type="text" value="${esc(cal.blockTitle || "Blocked")}" placeholder="Blocked"
              oninput="updateCalField('${cal.id}','blockTitle',this.value)">
     </div>
-    <div class="divider">Filters</div>
+    <div class="divider">Filters (when used as a target)</div>
     <div class="toggle-row">
       <div class="toggle-lbl">
         <span>Accept all-day events</span>
@@ -1202,9 +1202,9 @@ function buildCalForm(cal) {
 
 function buildVisOpts(cal) {
   const opts = [
-    { v: "fullyPrivate", t: "Fully Private", d: "Only the block title is visible. No details are exposed to anyone, including organization administrators." },
-    { v: "private",      t: "Private",       d: "Choose the block title or show the original event title. Note: organization administrators can see the title." },
-    { v: "mirror",       t: "As-Is",         d: "All event details are passed through as-is, including the original privacy settings." }
+    { v: "fullyPrivate", t: "Fully Private", d: "Only the block title is shared. No event details are exposed on other calendars, including to organization administrators." },
+    { v: "private",      t: "Private",       d: "Share the block title (or the original event title). Note: organization administrators can see the title." },
+    { v: "mirror",       t: "As-Is",         d: "All event details are passed through as-is, including title, description, location, and original privacy settings." }
   ];
   const items = opts.map(o => `
     <div class="vis-opt${cal.visibility === o.v ? " on" : ""}"
@@ -1225,7 +1225,7 @@ function buildVisSub(cal) {
     <div class="toggle-row" style="padding-top:6px">
       <div class="toggle-lbl">
         <span>Show original event title</span>
-        <span class="info" tabindex="0" data-tip="When on, the original event title is used instead of the block title.">i</span>
+        <span class="info" tabindex="0" data-tip="When on, the original event title from this calendar is shared on other calendars instead of the block title.">i</span>
       </div>
       <label class="toggle">
         <input type="checkbox" ${cal.privateShowOriginalTitle ? "checked" : ""}
@@ -1233,7 +1233,7 @@ function buildVisSub(cal) {
         <div class="toggle-track"></div><div class="toggle-thumb"></div>
       </label>
     </div>`;
-  if (cal.visibility === "mirror") return `<div class="note note-warn" style="margin-top:6px">Recurring events become individual instances on the target calendar — the recurrence rule is not carried over.</div>`;
+  if (cal.visibility === "mirror") return `<div class="note note-warn" style="margin-top:6px">Recurring events from this calendar become individual instances on destination calendars — the recurrence rule is not carried over.</div>`;
   return "";
 }
 

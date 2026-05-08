@@ -373,9 +373,9 @@ function readSig(e) {
  *  private      — blockTitle (or original title if privateShowOriginalTitle), marked private
  *  mirror       — full passthrough of source event fields; recurring instances become individual events
  */
-function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, targetCal, tz }) {
-  const mode = targetCal.visibility || "fullyPrivate";
-  const blockTitle = targetCal.blockTitle || "Blocked";
+function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, srcCal, targetCal, tz }) {
+  const mode = srcCal.visibility || "fullyPrivate";
+  const blockTitle = srcCal.blockTitle || "Blocked";
 
   const priv = {
     managedBy: getManagedBy(),
@@ -403,7 +403,7 @@ function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, targetCal, tz }) {
     body.reminders  = { useDefault: false };
 
   } else if (mode === "private") {
-    body.summary    = (targetCal.privateShowOriginalTitle && srcEvent.summary)
+    body.summary    = (srcCal.privateShowOriginalTitle && srcEvent.summary)
                         ? srcEvent.summary
                         : blockTitle;
     body.visibility = "private";
