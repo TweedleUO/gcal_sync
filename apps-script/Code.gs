@@ -9,7 +9,7 @@
  *  - Config saved via the Setup web app (or saveConfigFromSidebar in Setup.gs)
  */
 
-const MANAGED_BY = "gcal-sync";
+const MANAGED_BY = "gcal-sync:" + Session.getEffectiveUser().getEmail();
 const RETRY = {
   maxAttempts: 6,
   initialDelayMs: 300,
@@ -115,7 +115,7 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
       continue;
     }
     for (const srcEvent of listEvents(srcCalId, timeMinISO, timeMaxISO)) {
-      if (isManagedBlock(srcEvent)) continue; // chain prevention
+      if (isAnyManagedBlock(srcEvent)) continue; // chain prevention — skip all instances
 
       const norm = normalizeEvent(srcEvent);
       if (!norm || norm.transparency === "transparent") continue;
@@ -345,6 +345,15 @@ function getPrivate(e) {
 function isManagedBlock(e) {
   const p = getPrivate(e);
   return !!(p && p.managedBy === MANAGED_BY && p.srcKey);
+}
+
+// Matches managed blocks from any account running this app — used for chain
+// prevention so no instance re-syncs another instance's placeholder blocks.
+function isAnyManagedBlock(e) {
+  const p = getPrivate(e);
+  return !!(p && typeof p.managedBy === "string" &&
+            (p.managedBy === "gcal-sync" || p.managedBy.startsWith("gcal-sync:")) &&
+            p.srcKey);
 }
 
 function readSrcKey(e) {

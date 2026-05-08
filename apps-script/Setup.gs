@@ -198,17 +198,20 @@ function runSyncNow(configJson) {
 }
 
 /**
- * Removes all managed blocks from the given calendar IDs.
+ * Removes managed blocks from the given calendar IDs.
+ * scope: "account" (default) — only blocks created by this account.
+ *        "all"               — blocks created by any instance of this app.
  * Respects testMode — logs only if testMode is true.
  */
-function cleanupCalendars(calendarIds) {
+function cleanupCalendars(calendarIds, scope) {
   const config = getConfig();
   const start = new Date(2000, 0, 1).toISOString();
   const end = new Date(2100, 0, 1).toISOString();
   let removed = 0;
+  const blockFilter = scope === "all" ? isAnyManagedBlock : isManagedBlock;
 
   for (const calId of (calendarIds || [])) {
-    const events = listEvents(calId, start, end).filter(isManagedBlock);
+    const events = listEvents(calId, start, end).filter(blockFilter);
     for (const e of events) {
       if (!config.settings.testMode) {
         retry(() => Calendar.Events.remove(calId, e.id), "remove(cleanup)");

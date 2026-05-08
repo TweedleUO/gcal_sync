@@ -762,6 +762,19 @@
           <div class="label-row"><label>Select calendar(s) to clean</label></div>
           <div id="cleanup-checks" style="margin-top:6px"></div>
         </div>
+        <div class="field" style="margin-top:10px">
+          <div class="label-row"><label>Scope</label></div>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;font-size:13px;font-weight:400">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;min-height:36px">
+              <input type="radio" name="cleanup-scope" value="account" checked>
+              This account only <span style="color:var(--muted);font-size:11px">(blocks created by this Google account)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;min-height:36px">
+              <input type="radio" name="cleanup-scope" value="all">
+              All instances <span style="color:var(--muted);font-size:11px">(blocks from any account running this app)</span>
+            </label>
+          </div>
+        </div>
         <div style="display:flex;gap:8px;margin-top:12px">
           <button class="btn btn-danger" onclick="runCleanup()">Remove managed blocks</button>
           <button class="btn btn-secondary" onclick="document.getElementById('cleanup-panel').classList.remove('on')">Cancel</button>
@@ -1671,13 +1684,15 @@ function openCleanup() {
 function runCleanup() {
   const checked = [...document.querySelectorAll("#cleanup-checks input:checked")].map(el => el.value);
   if (!checked.length) { toast("Select at least one calendar.", "error"); return; }
+  const scope = document.querySelector('input[name="cleanup-scope"]:checked')?.value || "account";
+  const scopeLabel = scope === "all" ? " (all instances)" : "";
   google.script.run
     .withSuccessHandler(result => {
       document.getElementById("cleanup-panel").classList.remove("on");
-      toast(`Removed ${result.removed} managed block(s) from selected calendar(s).${result.testMode ? " (test mode — nothing written)" : ""}`, "success");
+      toast(`Removed ${result.removed} managed block(s)${scopeLabel}.${result.testMode ? " (test mode — nothing written)" : ""}`, "success");
     })
     .withFailureHandler(err => toast(err.message || "Cleanup failed.", "error"))
-    .cleanupCalendars(checked);
+    .cleanupCalendars(checked, scope);
 }
 
 function confirmReset() {
