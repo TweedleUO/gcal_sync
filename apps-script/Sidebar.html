@@ -1560,12 +1560,12 @@ function buildRunCard(summary, isLatest) {
   if (summary.warning) {
     statsHTML = `<span style="color:var(--warn-text)">${esc(summary.warning)}</span>`;
   } else if (summary.runType === "cleanup") {
-    const errCnt = summary.totalErrors || 0;
+    const errCnt = Math.max(summary.totalErrors || 0, summary.error ? 1 : 0);
     statsHTML = `
       <span class="run-stat">Removed <b>${summary.removed || 0}</b></span>
       <span class="run-stat${errCnt > 0 ? " run-stat-error" : ""}">Errors <b>${errCnt}</b></span>`;
   } else {
-    const errCnt = summary.totalErrors || 0;
+    const errCnt = Math.max(summary.totalErrors || 0, summary.error ? 1 : 0);
     statsHTML = `
       <span class="run-stat">Inserted <b>${summary.totalInserts || 0}</b></span>
       <span class="run-stat">Updated <b>${summary.totalPatches || 0}</b></span>

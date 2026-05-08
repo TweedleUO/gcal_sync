@@ -101,7 +101,7 @@ function calSync(e) {
     saveRunSummary(summary);
   } catch (err) {
     log.error("Sync failed", { error: err.message });
-    saveRunSummary({ ...summary, error: err.message });
+    saveRunSummary({ ...summary, error: err.message, totalErrors: summary.totalErrors + 1 });
     throw err;
   } finally {
     lock.releaseLock();
