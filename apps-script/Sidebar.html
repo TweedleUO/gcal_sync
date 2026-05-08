@@ -190,6 +190,7 @@
     }
     .btn-save.btn-secondary:hover { background: var(--bg); }
     .btn-save.btn-secondary:disabled { opacity: .35; }
+    .btn-save.btn-saving { opacity: 1 !important; cursor: wait; }
     .btn-save.btn-warning {
       background: var(--warning); color: white; border-color: transparent;
     }
@@ -940,7 +941,8 @@ function updateFooter() {
   document.getElementById("save-hint").classList.toggle("on", state.needsReview);
   document.getElementById("activate-btn").style.display   = live ? "none" : "";
   document.getElementById("activate-btn").disabled        = state.needsReview;
-  document.getElementById("deactivate-btn").style.display = live ? "" : "none";
+  document.getElementById("deactivate-btn").style.display  = live ? "" : "none";
+  document.getElementById("deactivate-btn").disabled       = false;
 }
 
 function markReview() {
@@ -1715,9 +1717,12 @@ function _doSave(btnId, btnLabel, onSuccess) {
     if (b) b.disabled = true;
   });
   const btn = document.getElementById(btnId);
-  btn.innerHTML = '<span class="spinner"></span>';
+  const spinCls = btn.classList.contains("btn-secondary") ? "spinner spinner-dk" : "spinner";
+  btn.classList.add("btn-saving");
+  btn.innerHTML = `<span class="${spinCls}"></span><span class="save-lbl">Saving…</span>`;
   const restore = ok => {
     btn.innerHTML = `<span class="save-lbl">${btnLabel}</span>`;
+    btn.classList.remove("btn-saving");
     if (ok) {
       state.isDirty = false;
       if (state.needsReview) {
