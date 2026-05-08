@@ -1,4 +1,5 @@
 const { loadGs } = require("./helpers/load");
+const { makeMockPropertiesService, makeMockSession } = require("./helpers/gas");
 
 // Load once per describe block — each suite gets a fresh context
 // to avoid test-order coupling.
@@ -439,5 +440,375 @@ describe("buildBlockBody mirror mode", () => {
       srcEvent: { id: "e3", summary: "Solo" }
     });
     expect(body.attendees).toBeUndefined();
+  });
+});
+
+// ── getManagedBy ──────────────────────────────────────────────────────────────
+
+describe("getManagedBy", () => {
+  test("returns gcal-sync:<email> using stored ownerEmail property", () => {
+    const ctx = loadGs("Code.gs", {
+      PropertiesService: makeMockPropertiesService({ ownerEmail: "owner@example.com" })
+    });
+    expect(ctx.getManagedBy()).toBe("gcal-sync:owner@example.com");
+  });
+
+  test("falls back to Session.getEffectiveUser when ownerEmail property absent", () => {
+    const ctx = loadGs("Code.gs"); // default Session email = "test@example.com"
+    expect(ctx.getManagedBy()).toBe("gcal-sync:test@example.com");
+  });
+
+  test("falls back to 'unknown' when property absent and session email is empty", () => {
+    const ctx = loadGs("Code.gs", {
+      PropertiesService: makeMockPropertiesService(),
+      Session: makeMockSession("UTC", "")
+    });
+    expect(ctx.getManagedBy()).toBe("gcal-sync:unknown");
+  });
+});
+
+// ── isAnyManagedBlock ─────────────────────────────────────────────────────────
+
+describe("isAnyManagedBlock", () => {
+  let ctx;
+  beforeAll(() => { ctx = loadGs("Code.gs"); });
+
+  test("returns true for a block from this account", () => {
+    expect(ctx.isAnyManagedBlock({
+      extendedProperties: { private: { managedBy: "gcal-sync:test@example.com", srcKey: "k1" } }
+    })).toBe(true);
+  });
+
+  test("returns true for a block from a different gcal-sync account", () => {
+    expect(ctx.isAnyManagedBlock({
+      extendedProperties: { private: { managedBy: "gcal-sync:other@example.com", srcKey: "k1" } }
+    })).toBe(true);
+  });
+
+  test("returns true for legacy 'gcal-sync' managedBy (no colon)", () => {
+    expect(ctx.isAnyManagedBlock({
+      extendedProperties: { private: { managedBy: "gcal-sync", srcKey: "k1" } }
+    })).toBe(true);
+  });
+
+  test("returns false when managedBy is a different tool", () => {
+    expect(ctx.isAnyManagedBlock({
+      extendedProperties: { private: { managedBy: "other-tool:user@example.com", srcKey: "k1" } }
+    })).toBe(false);
+  });
+
+  test("returns false when srcKey is missing", () => {
+    expect(ctx.isAnyManagedBlock({
+      extendedProperties: { private: { managedBy: "gcal-sync:test@example.com" } }
+    })).toBe(false);
+  });
+
+  test("returns false when extendedProperties is absent", () => {
+    expect(ctx.isAnyManagedBlock({ id: "e1", summary: "Meeting" })).toBe(false);
+  });
+});
+
+// ── buildBlockBody fullyPrivate + private modes ───────────────────────────────
+
+describe("buildBlockBody fullyPrivate + private modes", () => {
+  let ctx;
+  const timedNorm = { allDay: false, start: new Date("2024-03-10T10:00:00Z"), end: new Date("2024-03-10T11:00:00Z"), transparency: "opaque" };
+  const allDayNorm = { allDay: true, startDate: "2024-03-10", endDate: "2024-03-11", transparency: "opaque" };
+
+  beforeAll(() => {
+    const mockConfig = {
+      settings: { enableReminder: false, testMode: false, timeFrameDays: 30, frequency: "daily", syncOnUpdate: false },
+      calendars: [], syncFlows: { mode: "aggregate", aggregateTarget: null, customTargets: [] }
+    };
+    ctx = loadGs("Code.gs", {
+      getConfig: () => mockConfig, resolveFlows: () => [], saveRunSummary: () => {}
+    });
+    ctx.calSync();
+  });
+
+  test("fullyPrivate: uses blockTitle, visibility=private, reminders off, no passthrough fields", () => {
+    const tc = { id: "t", calendarId: "t@g.com", visibility: "fullyPrivate", blockTitle: "Busy" };
+    const body = ctx.buildBlockBody({ srcKey: "k1", norm: timedNorm, srcCalId: "s@g.com",
+      srcEvent: { id: "e1", summary: "Secret", description: "details", location: "NYC" }, targetCal: tc, tz: "UTC" });
+    expect(body.summary).toBe("Busy");
+    expect(body.visibility).toBe("private");
+    expect(body.reminders).toEqual({ useDefault: false });
+    expect(body.description).toBeUndefined();
+    expect(body.location).toBeUndefined();
+  });
+
+  test("fullyPrivate: does not expose srcEvent.summary even when present", () => {
+    const tc = { id: "t", calendarId: "t@g.com", visibility: "fullyPrivate", blockTitle: "Blocked" };
+    const body = ctx.buildBlockBody({ srcKey: "k1", norm: timedNorm, srcCalId: "s@g.com",
+      srcEvent: { id: "e1", summary: "Confidential meeting" }, targetCal: tc, tz: "UTC" });
+    expect(body.summary).toBe("Blocked");
+  });
+
+  test("private + privateShowOriginalTitle=false: uses blockTitle", () => {
+    const tc = { id: "t", calendarId: "t@g.com", visibility: "private", blockTitle: "Blocked", privateShowOriginalTitle: false };
+    const body = ctx.buildBlockBody({ srcKey: "k1", norm: timedNorm, srcCalId: "s@g.com",
+      srcEvent: { id: "e1", summary: "Secret" }, targetCal: tc, tz: "UTC" });
+    expect(body.summary).toBe("Blocked");
+    expect(body.visibility).toBe("private");
+    expect(body.reminders).toEqual({ useDefault: false });
+  });
+
+  test("private + privateShowOriginalTitle=true: uses srcEvent.summary", () => {
+    const tc = { id: "t", calendarId: "t@g.com", visibility: "private", blockTitle: "Blocked", privateShowOriginalTitle: true };
+    const body = ctx.buildBlockBody({ srcKey: "k1", norm: timedNorm, srcCalId: "s@g.com",
+      srcEvent: { id: "e1", summary: "Team standup" }, targetCal: tc, tz: "UTC" });
+    expect(body.summary).toBe("Team standup");
+  });
+
+  test("private + privateShowOriginalTitle=true but no srcEvent.summary: falls back to blockTitle", () => {
+    const tc = { id: "t", calendarId: "t@g.com", visibility: "private", blockTitle: "Blocked", privateShowOriginalTitle: true };
+    const body = ctx.buildBlockBody({ srcKey: "k1", norm: timedNorm, srcCalId: "s@g.com",
+      srcEvent: { id: "e1" }, targetCal: tc, tz: "UTC" });
+    expect(body.summary).toBe("Blocked");
+  });
+
+  test("fullyPrivate all-day event: date fields set, no dateTime", () => {
+    const tc = { id: "t", calendarId: "t@g.com", visibility: "fullyPrivate", blockTitle: "Blocked" };
+    const body = ctx.buildBlockBody({ srcKey: "k1", norm: allDayNorm, srcCalId: "s@g.com",
+      srcEvent: { id: "e1" }, targetCal: tc, tz: "UTC" });
+    expect(body.start).toEqual({ date: "2024-03-10" });
+    expect(body.end).toEqual({ date: "2024-03-11" });
+    expect(body.start.dateTime).toBeUndefined();
+  });
+});
+
+// ── runFlow ───────────────────────────────────────────────────────────────────
+
+describe("runFlow", () => {
+  // Primes CONFIG by running calSync() with a no-op flow list.
+  function makeCtx(testMode = true) {
+    const config = {
+      settings: { testMode, enableReminder: false, timeFrameDays: 30, frequency: "daily", syncOnUpdate: false },
+      calendars: [], syncFlows: { mode: "aggregate", aggregateTarget: null, customTargets: [] }
+    };
+    const ctx = loadGs("Code.gs", {
+      getConfig: () => config, resolveFlows: () => [], saveRunSummary: () => {}
+    });
+    ctx.calSync();
+    return ctx;
+  }
+
+  const tMin = "2024-01-01T00:00:00Z";
+  const tMax = "2024-02-01T00:00:00Z";
+  const log  = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+
+  const targetCal = {
+    id: "t", calendarId: "target@g.com", name: "Target",
+    visibility: "fullyPrivate", blockTitle: "Blocked",
+    allowDoubleBooking: true, acceptAllDayEvents: true, weekdayEventsOnly: false
+  };
+  const srcCal = { id: "s", calendarId: "src@g.com", name: "Source" };
+
+  const timedSrcEvent = {
+    id: "e1", iCalUID: "uid1", summary: "Meeting",
+    start: { dateTime: "2024-01-15T09:00:00Z" },
+    end:   { dateTime: "2024-01-15T10:00:00Z" }
+  };
+
+  beforeEach(() => { log.info.mockClear(); log.warn.mockClear(); log.error.mockClear(); });
+
+  test("throws when targetCal has no calendarId", () => {
+    const ctx = makeCtx();
+    expect(() => ctx.runFlow({
+      targetCal: { id: "t", calendarId: "", name: "Target" },
+      sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log
+    })).toThrow(/no ID configured/);
+  });
+
+  test("source with no calendarId → warns and skips that source, managed blocks still queried", () => {
+    const ctx = makeCtx();
+    ctx.runFlow({
+      targetCal, sourceCals: [{ id: "s", calendarId: "", name: "Empty" }],
+      timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log
+    });
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining("Skipping"), expect.any(Object));
+    // listManagedBlocks still fires once for target — one list call total, not two
+    expect(ctx.Calendar.Events.list).toHaveBeenCalledTimes(1);
+  });
+
+  test("new source event → inserts: 1", () => {
+    const ctx = makeCtx();
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [timedSrcEvent] }) // listEvents(src)
+      .mockReturnValueOnce({ items: [] });              // listManagedBlocks(target)
+    const r = ctx.runFlow({ targetCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(r.inserts).toBe(1);
+    expect(r.patches).toBe(0);
+    expect(r.deletes).toBe(0);
+  });
+
+  test("testMode=false + new event → Calendar.Events.insert called", () => {
+    const ctx = makeCtx(false);
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [timedSrcEvent] })
+      .mockReturnValueOnce({ items: [] });
+    ctx.runFlow({ targetCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(ctx.Calendar.Events.insert).toHaveBeenCalledTimes(1);
+  });
+
+  test("testMode=true + new event → Calendar.Events.insert NOT called", () => {
+    const ctx = makeCtx(true);
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [timedSrcEvent] })
+      .mockReturnValueOnce({ items: [] });
+    ctx.runFlow({ targetCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(ctx.Calendar.Events.insert).not.toHaveBeenCalled();
+  });
+
+  test("existing block with matching sig → skips: 1, no patch", () => {
+    const ctx = makeCtx();
+    const norm   = ctx.normalizeEvent(timedSrcEvent);
+    const srcKey = ctx.buildSrcKey(srcCal.calendarId, timedSrcEvent, norm);
+    const body   = ctx.buildBlockBody({ srcKey, norm, srcCalId: srcCal.calendarId, srcEvent: timedSrcEvent, targetCal, tz: "UTC" });
+    const sig    = ctx.getPrivate(body).sig;
+
+    const existingBlock = {
+      id: "block1",
+      extendedProperties: { private: { managedBy: "gcal-sync:test@example.com", srcKey, sig } }
+    };
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [timedSrcEvent] })
+      .mockReturnValueOnce({ items: [existingBlock] });
+    const r = ctx.runFlow({ targetCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(r.skips).toBe(1);
+    expect(r.patches).toBe(0);
+  });
+
+  test("existing block with stale sig → patches: 1", () => {
+    const ctx = makeCtx();
+    const norm   = ctx.normalizeEvent(timedSrcEvent);
+    const srcKey = ctx.buildSrcKey(srcCal.calendarId, timedSrcEvent, norm);
+    const existingBlock = {
+      id: "block1",
+      extendedProperties: { private: { managedBy: "gcal-sync:test@example.com", srcKey, sig: "stale" } }
+    };
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [timedSrcEvent] })
+      .mockReturnValueOnce({ items: [existingBlock] });
+    const r = ctx.runFlow({ targetCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(r.patches).toBe(1);
+    expect(r.inserts).toBe(0);
+  });
+
+  test("testMode=false + stale sig → Calendar.Events.patch called", () => {
+    const ctx = makeCtx(false);
+    const norm   = ctx.normalizeEvent(timedSrcEvent);
+    const srcKey = ctx.buildSrcKey(srcCal.calendarId, timedSrcEvent, norm);
+    const existingBlock = {
+      id: "block1",
+      extendedProperties: { private: { managedBy: "gcal-sync:test@example.com", srcKey, sig: "stale" } }
+    };
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [timedSrcEvent] })
+      .mockReturnValueOnce({ items: [existingBlock] });
+    ctx.runFlow({ targetCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(ctx.Calendar.Events.patch).toHaveBeenCalledTimes(1);
+  });
+
+  test("orphan managed block (not in source) → deletes: 1", () => {
+    const ctx = makeCtx();
+    const orphan = {
+      id: "orphan1",
+      extendedProperties: { private: { managedBy: "gcal-sync:test@example.com", srcKey: "src@g.com|UID|gone", sig: "s" } }
+    };
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [] })       // no source events
+      .mockReturnValueOnce({ items: [orphan] }); // orphan block exists
+    const r = ctx.runFlow({ targetCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(r.deletes).toBe(1);
+    expect(r.inserts).toBe(0);
+  });
+
+  test("testMode=false + orphan → Calendar.Events.remove called", () => {
+    const ctx = makeCtx(false);
+    const orphan = {
+      id: "orphan1",
+      extendedProperties: { private: { managedBy: "gcal-sync:test@example.com", srcKey: "src@g.com|UID|gone", sig: "s" } }
+    };
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [] })
+      .mockReturnValueOnce({ items: [orphan] });
+    ctx.runFlow({ targetCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(ctx.Calendar.Events.remove).toHaveBeenCalledTimes(1);
+  });
+
+  test("transparent source event → not inserted", () => {
+    const ctx = makeCtx();
+    const transparentEvent = { ...timedSrcEvent, transparency: "transparent" };
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [transparentEvent] })
+      .mockReturnValueOnce({ items: [] });
+    const r = ctx.runFlow({ targetCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(r.inserts).toBe(0);
+  });
+
+  test("weekdayEventsOnly=true: Saturday event not inserted", () => {
+    const ctx = makeCtx();
+    const satEvent = { id: "e2", iCalUID: "uid2", summary: "Weekend",
+      start: { dateTime: "2024-01-13T10:00:00Z" }, // 2024-01-13 is a Saturday
+      end:   { dateTime: "2024-01-13T11:00:00Z" } };
+    const weekdayCal = { ...targetCal, weekdayEventsOnly: true };
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [satEvent] })
+      .mockReturnValueOnce({ items: [] });
+    const r = ctx.runFlow({ targetCal: weekdayCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(r.inserts).toBe(0);
+  });
+
+  test("acceptAllDayEvents=false: all-day event not inserted", () => {
+    const ctx = makeCtx();
+    const allDay = { id: "e3", iCalUID: "uid3", start: { date: "2024-01-15" }, end: { date: "2024-01-16" } };
+    const noAllDayCal = { ...targetCal, acceptAllDayEvents: false };
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [allDay] })
+      .mockReturnValueOnce({ items: [] });
+    const r = ctx.runFlow({ targetCal: noAllDayCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(r.inserts).toBe(0);
+  });
+
+  test("chain prevention: managed block in source is not re-synced", () => {
+    const ctx = makeCtx();
+    const managedSrc = {
+      ...timedSrcEvent,
+      extendedProperties: { private: { managedBy: "gcal-sync:other@example.com", srcKey: "some:key" } }
+    };
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [managedSrc] })
+      .mockReturnValueOnce({ items: [] });
+    const r = ctx.runFlow({ targetCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(r.inserts).toBe(0);
+  });
+
+  test("allowDoubleBooking=false + overlapping busy slot → event skipped", () => {
+    const ctx = makeCtx();
+    const noDoubleCal = { ...targetCal, allowDoubleBooking: false };
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [timedSrcEvent] }) // 09:00–10:00
+      .mockReturnValueOnce({ items: [] });
+    ctx.Calendar.Freebusy.query.mockReturnValueOnce({
+      calendars: { "target@g.com": { busy: [{ start: "2024-01-15T08:00:00Z", end: "2024-01-15T10:00:00Z" }] } }
+    });
+    const r = ctx.runFlow({ targetCal: noDoubleCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(r.skips).toBe(1);
+    expect(r.inserts).toBe(0);
+  });
+
+  test("allowDoubleBooking=false + non-overlapping busy slot → event inserted", () => {
+    const ctx = makeCtx();
+    const noDoubleCal = { ...targetCal, allowDoubleBooking: false };
+    ctx.Calendar.Events.list
+      .mockReturnValueOnce({ items: [timedSrcEvent] }) // 09:00–10:00
+      .mockReturnValueOnce({ items: [] });
+    ctx.Calendar.Freebusy.query.mockReturnValueOnce({
+      calendars: { "target@g.com": { busy: [{ start: "2024-01-15T11:00:00Z", end: "2024-01-15T12:00:00Z" }] } }
+    });
+    const r = ctx.runFlow({ targetCal: noDoubleCal, sourceCals: [srcCal], timeMinISO: tMin, timeMaxISO: tMax, tz: "UTC", log });
+    expect(r.inserts).toBe(1);
+    expect(r.skips).toBe(0);
   });
 });
