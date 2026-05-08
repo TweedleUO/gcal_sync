@@ -36,7 +36,7 @@ function loadGs(filename, extraGlobals = {}) {
     PropertiesService:  mocks.makeMockPropertiesService(),
     Session:            mocks.makeMockSession(),
     ScriptApp:          mocks.makeMockScriptApp(),
-    HtmlService:        { createHtmlOutputFromFile: jest.fn(), XFrameOptionsMode: { ALLOWALL: 1 } },
+    HtmlService:        { createHtmlOutputFromFile: jest.fn(), XFrameOptionsMode: { ALLOWALL: 1, DEFAULT: 0 } },
     // Node globals needed by some scripts
     console,
     // Allow tests to override or inject any global before the script runs

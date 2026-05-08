@@ -5,13 +5,14 @@
 const PROP_CONFIG    = "config";
 const PROP_LAST_RUN  = "lastRun";   // legacy — kept for migration reads only
 const PROP_RUN_PFX   = "run_";
+const PROP_OWNER     = "ownerEmail";
 const MAX_RUNS       = 5;
 
 // ── Web App ───────────────────────────────────────────────────────────────────
 
 function doGet() {
   return HtmlService.createHtmlOutputFromFile("Sidebar")
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT)
     .setTitle("Calendar Sync Setup");
 }
 
@@ -59,7 +60,9 @@ function saveConfigFromSidebar(json) {
   if (str.length > 8800) {
     return { ok: false, error: "Config too large to save (" + str.length + " chars). Reduce the number of calendars or custom sync rules." };
   }
-  PropertiesService.getScriptProperties().setProperty(PROP_CONFIG, str);
+  const prop = PropertiesService.getScriptProperties();
+  prop.setProperty(PROP_CONFIG, str);
+  try { prop.setProperty(PROP_OWNER, Session.getEffectiveUser().getEmail()); } catch (_) {}
   setupTriggers(config);
   return { ok: true };
 }

@@ -9,7 +9,18 @@
  *  - Config saved via the Setup web app (or saveConfigFromSidebar in Setup.gs)
  */
 
-const MANAGED_BY = "gcal-sync:" + Session.getEffectiveUser().getEmail();
+// Lazy — Session.getEffectiveUser() returns "" on time-based/calendar triggers.
+// Owner email is persisted at save time so trigger runs resolve the correct value.
+let _managedBy = null;
+function getManagedBy() {
+  if (!_managedBy) {
+    const email = PropertiesService.getScriptProperties().getProperty("ownerEmail")
+                 || Session.getEffectiveUser().getEmail()
+                 || "unknown";
+    _managedBy = "gcal-sync:" + email;
+  }
+  return _managedBy;
+}
 const RETRY = {
   maxAttempts: 6,
   initialDelayMs: 300,
@@ -90,7 +101,7 @@ function calSync(e) {
     saveRunSummary(summary);
   } catch (err) {
     log.error("Sync failed", { error: err.message });
-    saveRunSummary({ ...summary, error: err.message });
+    saveRunSummary({ ...summary, error: err.message, totalErrors: summary.totalErrors + 1 });
     throw err;
   } finally {
     lock.releaseLock();
@@ -267,7 +278,7 @@ function listEvents(calId, timeMinISO, timeMaxISO) {
 }
 
 function listManagedBlocks(calId, timeMinISO, timeMaxISO) {
-  return fetchEvents(calId, timeMinISO, timeMaxISO, { privateExtendedProperty: `managedBy=${MANAGED_BY}` }, "Events.list(managed)");
+  return fetchEvents(calId, timeMinISO, timeMaxISO, { privateExtendedProperty: `managedBy=${getManagedBy()}` }, "Events.list(managed)");
 }
 
 function getBusy(calId, timeMinISO, timeMaxISO, log) {
@@ -330,7 +341,7 @@ function getPrivate(e) {
 
 function isManagedBlock(e) {
   const p = getPrivate(e);
-  return !!(p && p.managedBy === MANAGED_BY && p.srcKey);
+  return !!(p && p.managedBy === getManagedBy() && p.srcKey);
 }
 
 // Matches managed blocks from any account running this app — used for chain
@@ -367,7 +378,7 @@ function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, targetCal, tz }) {
   const blockTitle = targetCal.blockTitle || "Blocked";
 
   const priv = {
-    managedBy: MANAGED_BY,
+    managedBy: getManagedBy(),
     srcKey,
     sig: "",
     srcCalId: srcCalId || "",
