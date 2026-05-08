@@ -20,18 +20,27 @@ Connect Google Calendar, Outlook, Apple Calendar, and more. Keep your availabili
 
 ### Quick start (no coding tools required)
 
+The project has three source files that need to be pasted into your Apps Script project: **`Code.gs`**, **`Setup.gs`** (contains `doGet` — required for the web app), and **`Sidebar.html`**.
+
 1. Open [script.google.com](https://script.google.com) and click **New project**
-2. In the editor, click the `Code.gs` file and **replace all its contents** with the code from [`dist/Code.gs`](dist/Code.gs)
-3. Click **+** next to Files → **HTML** → name it `Sidebar` (exactly) → **replace all its contents** with [`dist/Sidebar.html`](dist/Sidebar.html)
-4. Enable the Calendar Advanced API:
+
+2. **Add Code.gs** — click the default `Code.gs` file and replace all its contents with [`apps-script/Code.gs`](apps-script/Code.gs)
+
+3. **Add Setup.gs** — click **+** next to Files → **Script** → name it `Setup` → replace all its contents with [`apps-script/Setup.gs`](apps-script/Setup.gs)
+
+4. **Add Sidebar.html** — click **+** next to Files → **HTML** → name it `Sidebar` (exactly) → replace all its contents with [`apps-script/Sidebar.html`](apps-script/Sidebar.html)
+
+5. **Enable the Calendar Advanced API:**
    - Click **+** next to Services → search **Google Calendar API** → click **Add**
-5. Deploy as a web app:
-   - **Deploy → New deployment** → set type to **Web app**
+
+6. **Deploy as a web app:**
+   - **Deploy → New deployment** → click the gear icon and set type to **Web app**
    - Execute as: **Me** · Who has access: **Only myself** (or your org)
    - Click **Deploy** and copy the web app URL
-6. Open the web app URL — the setup sidebar will guide you through adding calendars and activating sync
 
-> **Note:** After any code update, go to **Deploy → Manage deployments**, click the pencil icon on your deployment, set version to **New version**, and save.
+7. Open the web app URL — the setup sidebar will guide you through adding calendars and activating sync
+
+> **Updating:** After any code change, go to **Deploy → Manage deployments**, click the pencil icon, set version to **New version**, and save.
 
 ### Option A — clasp (recommended for developers)
 
@@ -44,10 +53,13 @@ npm run push
 
 Then open your Apps Script project, deploy as a web app, and open the setup URL.
 
-### Option B — bundle and paste (no clasp required)
+### Option B — bundle and paste
 
-1. Run `npm run bundle` to generate `dist/Code.gs` and `dist/Sidebar.html`
-2. Follow the **Quick start** steps above, using the generated `dist/` files
+Combines `Code.gs` and `Setup.gs` into a single file for a two-file paste (instead of three):
+
+1. Run `npm run bundle` — generates `dist/Code.gs` and `dist/Sidebar.html`
+2. Create a new Apps Script project, paste `dist/Code.gs` into `Code.gs`, add an HTML file named `Sidebar` and paste `dist/Sidebar.html`
+3. Follow steps 5–7 from the Quick start above
 
 ### First-time clasp setup
 
