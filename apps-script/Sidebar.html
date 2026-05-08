@@ -260,15 +260,9 @@
     .cleanup-cal-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
     .cleanup-cal-item {
       display: flex; align-items: center; gap: 10px;
-      padding: 10px 12px; min-height: 48px; cursor: pointer;
+      padding: 10px 12px; min-height: 48px;
       background: var(--surface); border: 1px solid var(--border);
       border-radius: var(--radius); box-shadow: var(--shadow);
-      transition: border-color .15s;
-    }
-    .cleanup-cal-item:hover { border-color: var(--accent); }
-    .cleanup-cal-item input[type="checkbox"] {
-      width: 15px; height: 15px; flex-shrink: 0; cursor: pointer;
-      accent-color: var(--accent);
     }
     .cleanup-cal-meta { min-width: 0; flex: 1; }
     .cleanup-cal-meta .cal-name { margin-bottom: 1px; }
@@ -1689,20 +1683,22 @@ function openCleanup() {
     document.getElementById("nav-" + i).classList.remove("active");
     document.getElementById("step-" + i).classList.remove("on");
   });
-  // Populate calendar cards (mirrors cal-row visual style)
+  // Populate calendar cards using matrix-node circles for selection
   const checks = document.getElementById("cleanup-checks");
   checks.innerHTML = state.config.calendars.length
     ? state.config.calendars.map(c => {
         const dotClass = document.getElementById("cal-dot-" + c.id)?.className || "cal-dot";
         const calId = esc(c.calendarId);
-        return `<label class="cleanup-cal-item">
-          <input type="checkbox" value="${calId}">
+        return `<div class="cleanup-cal-item">
+          <button class="matrix-node" data-cal-id="${calId}"
+                  onclick="this.classList.toggle('on'); this.setAttribute('aria-pressed', this.classList.contains('on'))"
+                  aria-pressed="false" aria-label="Select ${esc(c.name || c.calendarId)}"></button>
           <div class="${dotClass}"></div>
           <div class="cleanup-cal-meta">
             <div class="cal-name">${esc(c.name || c.calendarId)}</div>
             ${c.calendarId ? `<div class="cleanup-cal-id">${calId}</div>` : ""}
           </div>
-        </label>`;
+        </div>`;
       }).join("")
     : '<span style="color:var(--muted);font-size:13px">No calendars configured.</span>';
   // Reset scope to default
@@ -1712,7 +1708,7 @@ function openCleanup() {
 }
 
 function runCleanup() {
-  const checked = [...document.querySelectorAll("#cleanup-checks input:checked")].map(el => el.value);
+  const checked = [...document.querySelectorAll("#cleanup-checks .matrix-node.on")].map(el => el.dataset.calId);
   if (!checked.length) { toast("Select at least one calendar.", "error"); return; }
   const scope = document.querySelector('input[name="cleanup-scope"]:checked')?.value || "account";
   const scopeLabel = scope === "all" ? " (all instances)" : "";
