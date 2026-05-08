@@ -739,6 +739,15 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// ── Global error handlers ─────────────────────────────────────────────────────
+window.onerror = function(msg, _src, _line, _col, err) {
+  toast((err && err.message) || msg || "An unexpected error occurred.", "error");
+  return true;
+};
+window.addEventListener("unhandledrejection", function(e) {
+  toast((e.reason && e.reason.message) || "An unexpected error occurred.", "error");
+});
+
 // ── State ─────────────────────────────────────────────────────────────────────
 const state = {
   config: null,
@@ -752,7 +761,9 @@ document.addEventListener("DOMContentLoaded", () => {
   google.script.run
     .withSuccessHandler(init)
     .withFailureHandler(err => {
-      document.getElementById("loading").textContent = "Failed to load: " + (err.message || err);
+      const msg = err.message || String(err);
+      document.getElementById("loading").textContent = "Failed to load configuration.";
+      toast(msg || "Failed to load configuration.", "error");
     })
     .getConfigForSidebar();
 });
@@ -1218,7 +1229,7 @@ function renderSettings() {
 function loadRunSummary() {
   google.script.run
     .withSuccessHandler(renderRunSummary)
-    .withFailureHandler(() => {})
+    .withFailureHandler(err => toast(err.message || "Failed to load run history.", "error"))
     .getLastRunSummary();
 }
 

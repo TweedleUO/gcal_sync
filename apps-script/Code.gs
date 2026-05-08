@@ -58,13 +58,24 @@ function calSync(e) {
 
     for (const flow of flows) {
       log.info("Running flow", { target: flow.targetCal.id, sources: flow.sourceCals.map(c => c.id) });
-      const result = runFlow({ ...flow, timeMinISO, timeMaxISO, tz, log });
-      summary.flows.push({ target: flow.targetCal.id, ...result });
-      summary.totalInserts += result.inserts;
-      summary.totalPatches += result.patches;
-      summary.totalDeletes += result.deletes;
-      summary.totalSkips  += result.skips;
-      summary.totalErrors += result.errors;
+      try {
+        const result = runFlow({ ...flow, timeMinISO, timeMaxISO, tz, log });
+        summary.flows.push({ target: flow.targetCal.id, ...result });
+        summary.totalInserts += result.inserts;
+        summary.totalPatches += result.patches;
+        summary.totalDeletes += result.deletes;
+        summary.totalSkips  += result.skips;
+        summary.totalErrors += result.errors;
+      } catch (flowErr) {
+        const msg = flowErr.message || String(flowErr);
+        log.error("Flow failed", { target: flow.targetCal.id, error: msg });
+        summary.flows.push({
+          target: flow.targetCal.id,
+          inserts: 0, patches: 0, deletes: 0, skips: 0, errors: 1,
+          flowLog: [{ o: "err", e: msg }]
+        });
+        summary.totalErrors++;
+      }
     }
 
     log.info("All flows complete", {
@@ -90,6 +101,7 @@ function calSync(e) {
 
 function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
   const targetCalId = targetCal.calendarId;
+  if (!targetCalId) throw new Error(`Calendar "${targetCal.name || targetCal.id}" has no ID configured — open Setup and enter its calendar ID`);
 
   // 1. Build desired state from source calendars
   // desired map stores body/sig plus lightweight fields for the activity log
@@ -98,6 +110,10 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
 
   for (const srcCal of sourceCals) {
     const srcCalId = srcCal.calendarId;
+    if (!srcCalId) {
+      log.warn("Skipping source calendar with no ID", { cal: srcCal.name || srcCal.id });
+      continue;
+    }
     for (const srcEvent of listEvents(srcCalId, timeMinISO, timeMaxISO)) {
       if (isManagedBlock(srcEvent)) continue; // chain prevention
 
