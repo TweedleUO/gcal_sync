@@ -543,14 +543,6 @@
       .log-op-dupe  { background: #431407; color: #fdba74; }
     }
 
-    /* ── Cleanup panel ──────────────────────────────────────────────── */
-    .cleanup-panel {
-      margin-top: 16px; background: var(--surface);
-      border: 1px solid var(--border); border-radius: var(--radius); padding: 14px;
-      display: none;
-    }
-    .cleanup-panel.on { display: block; }
-
     /* ── Empty / toast / spinner ────────────────────────────────────── */
     .empty {
       text-align: center; padding: 32px 20px; color: var(--muted); font-size: 13px;
@@ -757,9 +749,17 @@
         <div class="empty">No runs yet. Click <strong>Run now</strong> above or wait for the scheduled sync.</div>
       </div>
 
-      <div class="cleanup-panel" id="cleanup-panel" style="margin-top:16px">
+    </div><!-- /step-4 -->
+
+    <!-- Cleanup (standalone section, not a numbered step) -->
+    <div class="step" id="step-cleanup">
+      <div class="step-hdr">
+        <h2>Cleanup</h2>
+        <p>Remove managed busy blocks written by this app from your calendars.</p>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)">
         <div class="field">
-          <div class="label-row"><label>Select calendar(s) to clean</label></div>
+          <div class="label-row"><label>Calendars</label></div>
           <div id="cleanup-checks" style="margin-top:6px"></div>
         </div>
         <div class="field" style="margin-top:10px">
@@ -777,11 +777,10 @@
         </div>
         <div style="display:flex;gap:8px;margin-top:12px">
           <button class="btn btn-danger" onclick="runCleanup()">Remove managed blocks</button>
-          <button class="btn btn-secondary" onclick="document.getElementById('cleanup-panel').classList.remove('on')">Cancel</button>
+          <button class="btn btn-secondary" onclick="goStep(4)">Cancel</button>
         </div>
       </div>
-
-    </div><!-- /step-4 -->
+    </div><!-- /step-cleanup -->
 
   </main>
 </div>
@@ -847,6 +846,7 @@ function goStep(n) {
     }
     renderSyncRules();
   }
+  document.getElementById("step-cleanup").classList.remove("on");
   [1, 2, 3, 4].forEach(i => {
     document.getElementById("nav-" + i).classList.toggle("active", i === n);
     document.getElementById("step-" + i).classList.toggle("on", i === n);
@@ -1668,7 +1668,12 @@ function runNow() {
 }
 
 function openCleanup() {
-  const panel = document.getElementById("cleanup-panel");
+  // Deactivate numbered nav items and hide all numbered steps
+  [1, 2, 3, 4].forEach(i => {
+    document.getElementById("nav-" + i).classList.remove("active");
+    document.getElementById("step-" + i).classList.remove("on");
+  });
+  // Populate calendar checkboxes
   const checks = document.getElementById("cleanup-checks");
   checks.innerHTML = state.config.calendars.length
     ? state.config.calendars.map(c => `
@@ -1677,8 +1682,10 @@ function openCleanup() {
           ${esc(c.name || c.calendarId)}
         </label>`).join("")
     : '<span style="color:var(--muted);font-size:13px">No calendars configured.</span>';
-  panel.classList.add("on");
-  goStep(4);
+  // Reset scope to default
+  const acctRadio = document.querySelector('input[name="cleanup-scope"][value="account"]');
+  if (acctRadio) acctRadio.checked = true;
+  document.getElementById("step-cleanup").classList.add("on");
 }
 
 function runCleanup() {
@@ -1688,7 +1695,8 @@ function runCleanup() {
   const scopeLabel = scope === "all" ? " (all instances)" : "";
   google.script.run
     .withSuccessHandler(result => {
-      document.getElementById("cleanup-panel").classList.remove("on");
+      goStep(4);
+      loadRunSummary();
       toast(`Removed ${result.removed} managed block(s)${scopeLabel}.${result.testMode ? " (test mode — nothing written)" : ""}`, "success");
     })
     .withFailureHandler(err => toast(err.message || "Cleanup failed.", "error"))
