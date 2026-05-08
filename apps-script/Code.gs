@@ -9,15 +9,15 @@
  *  - Config saved via the Setup web app (or saveConfigFromSidebar in Setup.gs)
  */
 
-// Lazy — Session.getEffectiveUser() returns "" on time-based/calendar triggers.
+// Lazy — Session.getEffectiveUser() returns "" on time-based/calendar triggers,
+// and can throw if the userinfo.email scope was not granted at authorization time.
 // Owner email is persisted at save time so trigger runs resolve the correct value.
 let _managedBy = null;
 function getManagedBy() {
   if (!_managedBy) {
-    const email = PropertiesService.getScriptProperties().getProperty("ownerEmail")
-                 || Session.getEffectiveUser().getEmail()
-                 || "unknown";
-    _managedBy = "gcal-sync:" + email;
+    let email = PropertiesService.getScriptProperties().getProperty("ownerEmail") || "";
+    if (!email) { try { email = Session.getEffectiveUser().getEmail(); } catch (_) {} }
+    _managedBy = "gcal-sync:" + (email || "unknown");
   }
   return _managedBy;
 }
