@@ -22,17 +22,21 @@ let CONFIG;
 
 // ── Entry Point ───────────────────────────────────────────────────────────────
 
-function calSync() {
+function calSync(e) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(0)) {
     console.log(JSON.stringify({ level: "WARN", msg: "Another instance already running — skipping" }));
     return;
   }
 
+  const runType = e && e.calendarId ? "calendar-update"
+                : e && e.triggerUid  ? "scheduled"
+                : "manual";
+
   CONFIG = getConfig();
   const runId = `${new Date().toISOString()}:${Math.random().toString(16).slice(2)}`;
   const log = makeLogger(runId);
-  const summary = { runId, flows: [], totalInserts: 0, totalPatches: 0, totalDeletes: 0, totalSkips: 0, totalErrors: 0 };
+  const summary = { runId, runType, flows: [], totalInserts: 0, totalPatches: 0, totalDeletes: 0, totalSkips: 0, totalErrors: 0 };
 
   try {
     const flows = resolveFlows(CONFIG);
@@ -71,6 +75,7 @@ function calSync() {
       totalErrors:  summary.totalErrors
     });
 
+    summary.testMode = CONFIG.settings.testMode;
     saveRunSummary(summary);
   } catch (err) {
     log.error("Sync failed", { error: err.message });
@@ -87,7 +92,8 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
   const targetCalId = targetCal.calendarId;
 
   // 1. Build desired state from source calendars
-  const desired = new Map(); // srcKey → { body, sig }
+  // desired map stores body/sig plus lightweight fields for the activity log
+  const desired = new Map(); // srcKey → { body, sig, srcCalId, srcTitle, startStr }
   let hasTimedCandidates = false;
 
   for (const srcCal of sourceCals) {
@@ -102,7 +108,11 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
 
       const srcKey = buildSrcKey(srcCalId, srcEvent, norm);
       const body = buildBlockBody({ srcKey, norm, srcCalId, srcEvent, srcCal, targetCal, tz });
-      desired.set(srcKey, { body, sig: getPrivate(body).sig });
+      const startStr = norm.allDay ? norm.startDate : norm.start.toISOString();
+      desired.set(srcKey, {
+        body, sig: getPrivate(body).sig,
+        srcCalId, srcTitle: srcEvent.summary || null, startStr
+      });
 
       if (!targetCal.allowDoubleBooking && !norm.allDay) hasTimedCandidates = true;
     }
@@ -114,6 +124,7 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
   //    Use privateExtendedProperty filter so only managed blocks are returned —
   //    avoids loading the full target calendar event list on each run.
   const existing = new Map(); // srcKey → eventResource (first seen wins)
+  const flowLog  = [];        // per-event activity entries for the run summary
 
   for (const e of listManagedBlocks(targetCalId, timeMinISO, timeMaxISO)) {
     const k = readSrcKey(e);
@@ -121,6 +132,7 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
 
     if (existing.has(k)) {
       log.warn("Removing duplicate managed event", { id: e.id, srcKey: k });
+      flowLog.push({ o: "dupe", id: e.id, k });
       if (!CONFIG.settings.testMode) retry(() => Calendar.Events.remove(targetCalId, e.id), "remove(dupe)");
     } else {
       existing.set(k, e);
@@ -137,19 +149,25 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
   // 4. Upsert: insert missing, patch changed
   let inserts = 0, patches = 0, deletes = 0, skips = 0, errors = 0;
 
-  for (const [key, { body, sig }] of desired) {
+  for (const [key, { body, sig, srcCalId, srcTitle, startStr }] of desired) {
     const cur = existing.get(key);
 
     if (!cur) {
       if (!targetCal.allowDoubleBooking && busyRanges && isTimedEvent(body)) {
-        if (overlapsAny(busyRanges, body.start.dateTime, body.end.dateTime)) { skips++; continue; }
+        if (overlapsAny(busyRanges, body.start.dateTime, body.end.dateTime)) {
+          skips++;
+          flowLog.push({ o: "skip", r: "overlap", t: srcTitle, s: startStr, c: srcCalId });
+          continue;
+        }
       }
       inserts++;
+      flowLog.push({ o: "ins", t: srcTitle, s: startStr, c: srcCalId });
       if (!CONFIG.settings.testMode) {
         try {
           retry(() => Calendar.Events.insert(body, targetCalId, { sendUpdates: "none" }), "insert");
         } catch (e) {
           errors++;
+          flowLog.push({ o: "err", r: "insert", t: srcTitle, s: startStr, e: e.message });
           log.error("Insert failed", { srcKey: key, error: e.message });
         }
       }
@@ -158,11 +176,13 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
 
     if (readSig(cur) === sig) { skips++; continue; }
     patches++;
+    flowLog.push({ o: "patch", t: srcTitle, s: startStr, c: srcCalId });
     if (!CONFIG.settings.testMode) {
       try {
         retry(() => Calendar.Events.patch(patchBody(body), targetCalId, cur.id, { sendUpdates: "none" }), "patch");
       } catch (e) {
         errors++;
+        flowLog.push({ o: "err", r: "patch", t: srcTitle, s: startStr, e: e.message });
         log.error("Patch failed", { srcKey: key, eventId: cur.id, error: e.message });
       }
     }
@@ -172,11 +192,14 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
   for (const [key, e] of existing) {
     if (!desired.has(key)) {
       deletes++;
+      const s = e.start?.dateTime || e.start?.date || null;
+      flowLog.push({ o: "del", t: e.summary || null, s });
       if (!CONFIG.settings.testMode) {
         try {
           retry(() => Calendar.Events.remove(targetCalId, e.id), "remove(orphan)");
         } catch (err) {
           errors++;
+          flowLog.push({ o: "err", r: "delete", t: e.summary || null, s, e: err.message });
           log.error("Delete failed", { srcKey: key, eventId: e.id, error: err.message });
         }
       }
@@ -184,7 +207,11 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
   }
 
   log.info("Flow complete", { targetCalId, inserts, patches, deletes, skips, errors });
-  return { inserts, patches, deletes, skips, errors };
+  return {
+    inserts, patches, deletes, skips, errors,
+    srcCalIds: sourceCals.map(c => c.calendarId),
+    flowLog
+  };
 }
 
 // ── Window ────────────────────────────────────────────────────────────────────

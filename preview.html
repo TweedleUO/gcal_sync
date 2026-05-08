@@ -739,6 +739,164 @@
 <div class="toast" id="toast"></div>
 
 <script>
+const google = { script: { run: (function() {
+  const mockConfig = {
+    calendars: [
+      { id: 'cal_1', name: 'Work', provider: 'google', calendarId: 'work@company.com',
+        blockTitle: 'Blocked', visibility: 'fullyPrivate',
+        privateShowOriginalTitle: false, weekdayEventsOnly: true,
+        acceptAllDayEvents: false, allowDoubleBooking: false },
+      { id: 'cal_2', name: 'Personal', provider: 'google', calendarId: 'me@gmail.com',
+        blockTitle: 'Busy', visibility: 'private',
+        privateShowOriginalTitle: true, weekdayEventsOnly: false,
+        acceptAllDayEvents: true, allowDoubleBooking: true }
+    ],
+    syncFlows: { mode: 'mesh', aggregateTarget: null, customTargets: [] },
+    settings: { timeFrameDays: 30, frequency: 'daily', syncOnUpdate: true,
+                 enableReminder: false, testMode: true }
+  };
+  // Mock runs reflect what the actual calSync/runFlow code returns for a 2-calendar mesh.
+  // Mesh mode: cal_1 (Work, work@company.com) and cal_2 (Personal, me@gmail.com).
+  //   Flow A: target=cal_1 (Work),     sources=[me@gmail.com     (Personal)]
+  //   Flow B: target=cal_2 (Personal), sources=[work@company.com (Work)]
+  // srcCalIds comes from sourceCals.map(c => c.calendarId) in runFlow.
+  // flowLog entries: o=ins/patch/del/skip/err/dupe, t=title, s=start ISO, c=srcCalId, r=reason, e=errMsg
+  const now = Date.now();
+
+  const run1 = { // Manual, test mode — first check to see what would sync
+    runType: 'manual', testMode: true,
+    ts: new Date(now - 7200000).toISOString(),
+    totalInserts: 3, totalPatches: 1, totalDeletes: 1, totalSkips: 2, totalErrors: 1,
+    flows: [
+      { // Personal → Work: what personal events would block Work calendar
+        target: 'cal_1', srcCalIds: ['me@gmail.com'],
+        inserts: 2, patches: 1, deletes: 0, skips: 1, errors: 0,
+        flowLog: [
+          { o: 'ins',   t: 'Team standup',       s: '2026-05-07T09:00:00Z', c: 'me@gmail.com' },
+          { o: 'ins',   t: 'Dentist appointment', s: '2026-05-08T14:00:00Z', c: 'me@gmail.com' },
+          { o: 'patch', t: 'Lunch with Sarah',    s: '2026-05-07T12:00:00Z', c: 'me@gmail.com' },
+          { o: 'skip',  t: 'Evening drinks', r: 'overlap', s: '2026-05-07T19:00:00Z', c: 'me@gmail.com' }
+        ]
+      },
+      { // Work → Personal: work events blocked in Personal; 1 API error on insert
+        target: 'cal_2', srcCalIds: ['work@company.com'],
+        inserts: 1, patches: 0, deletes: 1, skips: 1, errors: 1,
+        flowLog: [
+          { o: 'err',  r: 'insert', t: 'Q2 Review', s: '2026-05-09T15:00:00Z', e: 'Calendar API quota exceeded' },
+          { o: 'ins',  t: 'Blocked', s: '2026-05-07T09:00:00Z', c: 'work@company.com' },
+          { o: 'del',  t: 'Blocked', s: '2026-05-05T14:00:00Z' },
+          { o: 'skip', t: 'Blocked', r: 'overlap', s: '2026-05-07T14:00:00Z', c: 'work@company.com' }
+        ]
+      }
+    ]
+  };
+
+  const run2 = { // Calendar Update trigger — Personal calendar changed, partial delta
+    runType: 'calendar-update', testMode: true,
+    ts: new Date(now - 86400000).toISOString(),
+    totalInserts: 2, totalPatches: 0, totalDeletes: 0, totalSkips: 5, totalErrors: 0,
+    flows: [
+      { target: 'cal_1', srcCalIds: ['me@gmail.com'],
+        inserts: 1, patches: 0, deletes: 0, skips: 3, errors: 0,
+        flowLog: [
+          { o: 'ins',  t: 'Yoga class',    s: '2026-05-06T07:00:00Z', c: 'me@gmail.com' },
+          { o: 'skip', t: 'Team standup',  r: 'overlap', s: '2026-05-06T09:00:00Z', c: 'me@gmail.com' },
+          { o: 'skip', t: 'Grocery run',   r: 'overlap', s: '2026-05-06T10:00:00Z', c: 'me@gmail.com' },
+          { o: 'skip', t: 'Call with mom', r: 'overlap', s: '2026-05-06T16:00:00Z', c: 'me@gmail.com' }
+        ]
+      },
+      { target: 'cal_2', srcCalIds: ['work@company.com'],
+        inserts: 1, patches: 0, deletes: 0, skips: 2, errors: 0,
+        flowLog: [
+          { o: 'ins',  t: 'Blocked', s: '2026-05-06T09:00:00Z', c: 'work@company.com' },
+          { o: 'skip', t: 'Blocked', r: 'overlap', s: '2026-05-06T11:00:00Z', c: 'work@company.com' },
+          { o: 'skip', t: 'Blocked', r: 'overlap', s: '2026-05-06T14:00:00Z', c: 'work@company.com' }
+        ]
+      }
+    ]
+  };
+
+  const run3 = { // Scheduled overnight — live mode, real writes, larger delta
+    runType: 'scheduled', testMode: false,
+    ts: new Date(now - 172800000).toISOString(),
+    totalInserts: 6, totalPatches: 2, totalDeletes: 1, totalSkips: 0, totalErrors: 0,
+    flows: [
+      { target: 'cal_1', srcCalIds: ['me@gmail.com'],
+        inserts: 4, patches: 1, deletes: 1, skips: 0, errors: 0,
+        flowLog: [
+          { o: 'ins',   t: 'Board meeting',    s: '2026-05-05T09:00:00Z', c: 'me@gmail.com' },
+          { o: 'ins',   t: 'Conference call',  s: '2026-05-05T14:00:00Z', c: 'me@gmail.com' },
+          { o: 'ins',   t: 'Team offsite',     s: '2026-05-04T09:00:00Z', c: 'me@gmail.com' },
+          { o: 'ins',   t: 'Dentist follow-up',s: '2026-05-06T15:30:00Z', c: 'me@gmail.com' },
+          { o: 'patch', t: 'Sprint planning',  s: '2026-05-05T10:00:00Z', c: 'me@gmail.com' },
+          { o: 'del',   t: 'Blocked',          s: '2026-05-03T11:00:00Z' }
+        ]
+      },
+      { target: 'cal_2', srcCalIds: ['work@company.com'],
+        inserts: 2, patches: 1, deletes: 0, skips: 0, errors: 0,
+        flowLog: [
+          { o: 'ins',   t: 'Blocked', s: '2026-05-05T09:00:00Z', c: 'work@company.com' },
+          { o: 'ins',   t: 'Blocked', s: '2026-05-05T14:00:00Z', c: 'work@company.com' },
+          { o: 'patch', t: 'Blocked', s: '2026-05-04T10:00:00Z', c: 'work@company.com' }
+        ]
+      }
+    ]
+  };
+
+  const run4 = { // Manual cleanup — 7 orphaned managed blocks removed
+    runType: 'cleanup', testMode: false,
+    ts: new Date(now - 259200000).toISOString(),
+    removed: 7,
+    totalInserts: 0, totalPatches: 0, totalDeletes: 7, totalSkips: 0, totalErrors: 0,
+    flows: []
+  };
+
+  const run5 = { // Scheduled — failed at startup before any flows ran
+    runType: 'scheduled', testMode: false,
+    ts: new Date(now - 345600000).toISOString(),
+    error: 'Calendar API rate limit exceeded',
+    totalInserts: 0, totalPatches: 0, totalDeletes: 0, totalSkips: 0, totalErrors: 1,
+    flows: []
+  };
+
+  const mockRuns = [run1, run2, run3, run4, run5];
+
+  let _sh = null, _fh = null;
+  function call(method) {
+    const sh = _sh, fh = _fh; _sh = null; _fh = null;
+    const delay = method === 'runSyncNow' ? 1200 : method === 'saveConfigFromSidebar' ? 700 : 80;
+    setTimeout(() => {
+      let r;
+      if      (method === 'getConfigForSidebar')   r = mockConfig;
+      else if (method === 'getLastRunSummary')      r = mockRuns;
+      else if (method === 'saveConfigFromSidebar')  r = { ok: true };
+      else if (method === 'runSyncNow')             r = [{ ...run1, runType: 'manual', ts: new Date().toISOString(), totalErrors: 0, flows: run1.flows.map(f => ({ ...f, errors: 0, flowLog: f.flowLog.filter(e => e.o !== 'err') })) }, ...mockRuns.slice(0, 4)];
+      else if (method === 'cleanupCalendars')       r = { removed: 3, testMode: true };
+      else if (method === 'resetConfig')            r = { ok: true };
+      sh && sh(r);
+    }, delay);
+  }
+  const runner = {
+    withSuccessHandler(fn) { _sh = fn; return runner; },
+    withFailureHandler(fn) { _fh = fn; return runner; },
+    getConfigForSidebar()   { call('getConfigForSidebar'); },
+    getLastRunSummary()     { call('getLastRunSummary'); },
+    saveConfigFromSidebar() { call('saveConfigFromSidebar'); },
+    runSyncNow()            { call('runSyncNow'); },
+    cleanupCalendars()      { call('cleanupCalendars'); },
+    resetConfig()           { call('resetConfig'); }
+  };
+  return runner;
+})() } };
+
+
+
+
+
+
+
+
+
 // ── State ─────────────────────────────────────────────────────────────────────
 const state = {
   config: null,

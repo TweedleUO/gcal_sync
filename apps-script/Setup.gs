@@ -2,8 +2,10 @@
  * Setup — config storage, trigger management, web app entry point, sidebar handlers.
  */
 
-const PROP_CONFIG = "config";
-const PROP_LAST_RUN = "lastRun";
+const PROP_CONFIG    = "config";
+const PROP_LAST_RUN  = "lastRun";   // legacy — kept for migration reads only
+const PROP_RUN_PFX   = "run_";
+const MAX_RUNS       = 5;
 
 // ── Web App ───────────────────────────────────────────────────────────────────
 
@@ -136,16 +138,50 @@ function getSourceCalendarIds(config) {
 // ── Run Summary ───────────────────────────────────────────────────────────────
 
 function saveRunSummary(summary) {
-  PropertiesService.getScriptProperties().setProperty(
-    PROP_LAST_RUN,
-    JSON.stringify({ ...summary, ts: new Date().toISOString() })
-  );
+  const data = { ...summary, ts: new Date().toISOString() };
+  // Cap flowLog to stay within the 9KB per-property limit
+  let str = JSON.stringify(data);
+  if (str.length > 8000) {
+    for (const flow of (data.flows || [])) {
+      if (flow.flowLog && flow.flowLog.length > 15) {
+        flow.flowLog = flow.flowLog.slice(0, 15);
+        flow.flowLogTruncated = true;
+      }
+    }
+    str = JSON.stringify(data);
+    if (str.length > 8000) {
+      for (const flow of (data.flows || [])) {
+        delete flow.flowLog;
+        flow.flowLogTruncated = true;
+      }
+    }
+  }
+  // Shift run slots: run_3→run_4, run_2→run_3, run_1→run_2, run_0→run_1
+  const prop = PropertiesService.getScriptProperties();
+  for (let i = MAX_RUNS - 1; i > 0; i--) {
+    const prev = prop.getProperty(PROP_RUN_PFX + (i - 1));
+    if (prev) prop.setProperty(PROP_RUN_PFX + i, prev);
+    else prop.deleteProperty(PROP_RUN_PFX + i);
+  }
+  prop.setProperty(PROP_RUN_PFX + "0", JSON.stringify(data));
 }
 
 function getLastRunSummary() {
-  const raw = PropertiesService.getScriptProperties().getProperty(PROP_LAST_RUN);
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch (_) { return null; }
+  const prop = PropertiesService.getScriptProperties();
+  const runs = [];
+  for (let i = 0; i < MAX_RUNS; i++) {
+    const raw = prop.getProperty(PROP_RUN_PFX + i);
+    if (!raw) break;
+    try { runs.push(JSON.parse(raw)); } catch (_) { break; }
+  }
+  if (runs.length) return runs;
+  // Migrate from old single-property format
+  try {
+    const raw = prop.getProperty(PROP_LAST_RUN);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch (_) { return []; }
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
@@ -175,13 +211,23 @@ function cleanupCalendars(calendarIds) {
     }
   }
 
-  return { removed, testMode: config.settings.testMode };
+  const result = { removed, testMode: config.settings.testMode };
+  saveRunSummary({
+    runType: "cleanup",
+    flows: [],
+    removed,
+    testMode: config.settings.testMode,
+    totalInserts: 0, totalPatches: 0, totalDeletes: removed,
+    totalSkips: 0, totalErrors: 0
+  });
+  return result;
 }
 
 function resetConfig() {
   const props = PropertiesService.getScriptProperties();
   props.deleteProperty(PROP_CONFIG);
   props.deleteProperty(PROP_LAST_RUN);
+  for (let i = 0; i < MAX_RUNS; i++) props.deleteProperty(PROP_RUN_PFX + i);
   clearTriggers();
   return { ok: true };
 }
