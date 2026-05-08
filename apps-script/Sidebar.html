@@ -886,11 +886,6 @@ function goStep(n) {
   if (state.currentStep === n) return;
   state.currentStep = n;
   if (n === 2) {
-    if (state.needsReview) {
-      state.needsReview = false;
-      document.getElementById("review-badge").classList.remove("on");
-      updateFooter();
-    }
     renderSyncRules();
   }
   document.getElementById("step-cleanup").classList.remove("on");
@@ -1714,28 +1709,38 @@ function fmtLogTime(iso) {
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 function _doSave(btnId, btnLabel, onSuccess) {
+  // Lock all footer buttons for the duration — prevents concurrent save/activate/deactivate
+  ["save-btn", "activate-btn", "deactivate-btn"].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = true;
+  });
   const btn = document.getElementById(btnId);
-  btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>';
+  const restore = ok => {
+    btn.innerHTML = `<span class="save-lbl">${btnLabel}</span>`;
+    if (ok) {
+      state.isDirty = false;
+      if (state.needsReview) {
+        state.needsReview = false;
+        document.getElementById("review-badge").classList.remove("on");
+      }
+      updateStatusBar();
+    }
+    updateFooter();
+    onSuccess(ok);
+  };
   google.script.run
     .withSuccessHandler(result => {
-      btn.disabled = false;
-      btn.innerHTML = `<span class="save-lbl">${btnLabel}</span>`;
       if (result && !result.ok) {
         toast(result.error || "Save failed.", "error");
-        onSuccess(false);
+        restore(false);
         return;
       }
-      state.isDirty = false;
-      updateStatusBar();
-      updateFooter();
-      onSuccess(true);
+      restore(true);
     })
     .withFailureHandler(err => {
-      btn.disabled = false;
-      btn.innerHTML = `<span class="save-lbl">${btnLabel}</span>`;
       toast(err.message || "Save failed.", "error");
-      onSuccess(false);
+      restore(false);
     })
     .saveConfigFromSidebar(state.config);
 }
@@ -1787,37 +1792,41 @@ function deactivateSync() {
 }
 
 function runNow() {
+  if (state.isDirty) {
+    toast("Save your changes before running.", "");
+    return;
+  }
   const btn = document.getElementById("run-now-btn");
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner spinner-dk"></span>';
+  const resetBtn = () => { btn.disabled = false; btn.textContent = "Run now"; };
   // GAS max execution time is 6 min — restore UI if the callback never fires
+  let watchdogFired = false;
   const watchdog = setTimeout(() => {
-    btn.disabled = false;
-    btn.textContent = "Run now";
+    watchdogFired = true;
+    resetBtn();
     loadRunSummary();
     toast("Sync is taking longer than expected. It may still complete in the background.", "");
   }, 330000);
   google.script.run
     .withSuccessHandler(result => {
       clearTimeout(watchdog);
-      btn.disabled = false;
-      btn.textContent = "Run now";
+      resetBtn();
       if (result && result.skipped) {
         loadRunSummary();
         toast("Another sync is already running — will complete shortly.", "");
         return;
       }
-      if (result) renderRunSummary(result);
-      toast("Sync complete.", "success");
+      loadRunSummary();
+      if (!watchdogFired) toast("Sync complete.", "success");
     })
     .withFailureHandler(err => {
       clearTimeout(watchdog);
-      btn.disabled = false;
-      btn.textContent = "Run now";
+      resetBtn();
       loadRunSummary();
       toast(err.message || "Sync failed.", "error");
     })
-    .runSyncNow(state.config);
+    .runSyncNow(null);
 }
 
 function openCleanup() {
@@ -1853,22 +1862,35 @@ function runCleanup() {
   if (!checked.length) { toast("Select at least one calendar.", "error"); return; }
   const scope = document.querySelector('input[name="cleanup-scope"]:checked')?.value || "account";
   const scopeLabel = scope === "all" ? " (all instances)" : "";
+  const btn = document.querySelector("#step-cleanup .btn-danger");
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-dk"></span>'; }
+  const resetBtn = () => { if (btn) { btn.disabled = false; btn.textContent = "Remove managed blocks"; } };
   google.script.run
     .withSuccessHandler(result => {
+      resetBtn();
       goStep(4);
       loadRunSummary();
       toast(`Removed ${result.removed} managed block(s)${scopeLabel}.${result.testMode ? " (test mode — nothing written)" : ""}`, "success");
     })
-    .withFailureHandler(err => toast(err.message || "Cleanup failed.", "error"))
+    .withFailureHandler(err => {
+      resetBtn();
+      toast(err.message || "Cleanup failed.", "error");
+    })
     .cleanupCalendars(checked, scope);
 }
 
 function confirmReset() {
   if (!confirm("Remove all saved settings and triggers?\n\nThis can be undone by reconfiguring and saving.")) return;
+  const resetBtn = document.querySelector(".btn-side-action.danger");
+  if (resetBtn) { resetBtn.disabled = true; resetBtn.innerHTML = '<span class="spinner spinner-dk"></span>'; }
+  const restoreBtn = () => { if (resetBtn) { resetBtn.disabled = false; resetBtn.textContent = "Reset config"; } };
   google.script.run
     .withSuccessHandler(() => {
+      // Config is wiped — now reload fresh defaults. If this second call fails,
+      // the reset already happened so show a reload prompt rather than "Reset failed".
       google.script.run
         .withSuccessHandler(data => {
+          restoreBtn();
           state.calIdCounter = 0;
           state.needsReview = false;
           document.getElementById("review-badge").classList.remove("on");
@@ -1879,10 +1901,16 @@ function confirmReset() {
           init(data);
           toast("Config reset.", "success");
         })
-        .withFailureHandler(err => toast(err.message || "Reset failed.", "error"))
+        .withFailureHandler(() => {
+          restoreBtn();
+          toast("Config was reset. Reload the page to continue.", "");
+        })
         .getConfigForSidebar();
     })
-    .withFailureHandler(err => toast(err.message || "Reset failed.", "error"))
+    .withFailureHandler(err => {
+      restoreBtn();
+      toast(err.message || "Reset failed.", "error");
+    })
     .resetConfig();
 }
 
