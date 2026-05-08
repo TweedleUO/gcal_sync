@@ -26,7 +26,10 @@ function loadSidebarScript() {
     checked: false,
     querySelectorAll: () => [],
     querySelector: () => null,
-    dataset: {}
+    dataset: {},
+    addEventListener: () => {},
+    setAttribute: () => {},
+    appendChild: () => {}
   });
   const ctx = vm.createContext({
     window: { onerror: null, addEventListener: () => {} },
@@ -460,7 +463,8 @@ describe("runNow watchdog", () => {
     const domEl = () => ({
       style: {}, classList: { toggle: () => {}, add: () => {}, remove: () => {}, contains: () => false },
       innerHTML: "", textContent: "", value: "", checked: false,
-      querySelectorAll: () => [], querySelector: () => null, dataset: {}
+      querySelectorAll: () => [], querySelector: () => null, dataset: {},
+      addEventListener: () => {}, setAttribute: () => {}, appendChild: () => {}
     });
 
     let capturedDelay;

@@ -343,7 +343,11 @@
     }
     .toggle-lbl { display: flex; align-items: center; gap: 5px; font-size: 13px; }
     .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
-    .toggle input { display: none; }
+    .toggle input {
+      position: absolute; width: 1px; height: 1px; padding: 0;
+      margin: -1px; overflow: hidden; clip: rect(0,0,0,0);
+      white-space: nowrap; border: 0;
+    }
     .toggle-track {
       position: absolute; inset: 0;
       background: #d1d5db; border-radius: 20px; cursor: pointer; transition: background .2s;
@@ -826,7 +830,7 @@
   </main>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script>
 // ── Global error handlers ─────────────────────────────────────────────────────
@@ -880,6 +884,14 @@ function init(data) {
   loadRunSummary();
   updateFooter();
   goStep(1);
+  applyInfoLabels();
+}
+
+function applyInfoLabels(root) {
+  (root || document).querySelectorAll(".info[data-tip]").forEach(el => {
+    if (!el.getAttribute("aria-label")) el.setAttribute("aria-label", el.getAttribute("data-tip"));
+    el.setAttribute("role", "img");
+  });
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -891,7 +903,9 @@ function goStep(n) {
   }
   document.getElementById("step-cleanup").classList.remove("on");
   [1, 2, 3, 4].forEach(i => {
-    document.getElementById("nav-" + i).classList.toggle("active", i === n);
+    const nav = document.getElementById("nav-" + i);
+    nav.classList.toggle("active", i === n);
+    nav.setAttribute("aria-current", i === n ? "page" : "false");
     document.getElementById("step-" + i).classList.toggle("on", i === n);
   });
 }
@@ -977,9 +991,10 @@ function buildCalRow(cal) {
   const badge = { fullyPrivate: "Fully Private", private: "Private", mirror: "As-Is" };
   div.innerHTML = `
     <div class="cal-summary">
-      <div class="cal-drag-handle" draggable="true"
+      <div class="cal-drag-handle" draggable="true" tabindex="0" role="button"
            ondragstart="onDragStart(event,'${cal.id}')" ondragend="onDragEnd()"
-           title="Drag to reorder" aria-label="Drag to reorder">
+           onkeydown="onDragHandleKey(event,'${cal.id}')"
+           title="Drag to reorder (or use ↑↓ to move)" aria-label="Reorder ${esc(cal.name || cal.id)}. Use Up and Down arrow keys to move.">
         <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" aria-hidden="true">
           <circle cx="3" cy="2" r="1.5"/><circle cx="7" cy="2" r="1.5"/>
           <circle cx="3" cy="7" r="1.5"/><circle cx="7" cy="7" r="1.5"/>
@@ -1004,6 +1019,7 @@ function buildCalRow(cal) {
     </div>
     <div class="cal-form" id="cal-form-${cal.id}">${buildCalForm(cal)}</div>
   `;
+  applyInfoLabels(div);
   return div;
 }
 
@@ -1082,16 +1098,18 @@ function buildVisOpts(cal) {
     { v: "private",      t: "Private",       d: "Choose the block title or show the original event title. Note: organization administrators can see the title." },
     { v: "mirror",       t: "As-Is",         d: "All event details are passed through as-is, including the original privacy settings." }
   ];
-  return opts.map(o => `
+  const items = opts.map(o => `
     <div class="vis-opt${cal.visibility === o.v ? " on" : ""}"
          role="radio" aria-checked="${cal.visibility === o.v}"
          tabindex="${cal.visibility === o.v ? "0" : "-1"}"
+         data-vis-value="${o.v}"
          onclick="selectVis('${esc(cal.id)}','${o.v}',this)"
-         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectVis('${esc(cal.id)}','${o.v}',this);}">
+         onkeydown="onVisKey(event,'${esc(cal.id)}','${o.v}',this)">
       <div class="vis-radio"></div>
       <div><div class="vis-title">${o.t}</div><div class="vis-desc">${o.d}</div></div>
     </div>
   `).join("");
+  return `<div role="radiogroup" aria-label="Event visibility">${items}</div>`;
 }
 
 function buildVisSub(cal) {
@@ -1111,6 +1129,20 @@ function buildVisSub(cal) {
   return "";
 }
 
+function onVisKey(e, calId, value, el) {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    selectVis(calId, value, el);
+  } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const group = el.closest('[role="radiogroup"]');
+    const opts = [...group.querySelectorAll('[role="radio"]')];
+    const idx = opts.indexOf(el);
+    const next = opts[e.key === "ArrowDown" ? (idx + 1) % opts.length : (idx - 1 + opts.length) % opts.length];
+    if (next) selectVis(calId, next.dataset.visValue, next);
+  }
+}
+
 function selectVis(calId, value, el) {
   const cal = getCalById(calId);
   if (!cal) return;
@@ -1123,7 +1155,9 @@ function selectVis(calId, value, el) {
     o.setAttribute("tabindex", isSelected ? "0" : "-1");
   });
   if (el) el.focus();
-  document.getElementById("vis-sub-" + calId).innerHTML = buildVisSub(cal);
+  const visSub = document.getElementById("vis-sub-" + calId);
+  visSub.innerHTML = buildVisSub(cal);
+  applyInfoLabels(visSub);
   const badges = { fullyPrivate: "Fully Private", private: "Private", mirror: "As-Is" };
   document.getElementById("cal-badge-" + calId).textContent = badges[value] || value;
   const bf = document.getElementById("block-title-field-" + calId);
@@ -1243,6 +1277,23 @@ function onDrop(e, targetCalId) {
   const srcRow = document.getElementById("cal-row-" + srcId);
   if (insertAfter) tgtRow.after(srcRow);
   else tgtRow.before(srcRow);
+  markDirty();
+  markReview();
+}
+
+function onDragHandleKey(e, calId) {
+  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+  e.preventDefault();
+  const cals = state.config.calendars;
+  const idx = cals.findIndex(c => c.id === calId);
+  if (idx === -1) return;
+  const swapIdx = e.key === "ArrowUp" ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= cals.length) return;
+  [cals[idx], cals[swapIdx]] = [cals[swapIdx], cals[idx]];
+  const rowA = document.getElementById("cal-row-" + calId);
+  const rowB = document.getElementById("cal-row-" + cals[idx].id);
+  if (e.key === "ArrowUp") rowB.before(rowA); else rowB.after(rowA);
+  rowA.querySelector(".cal-drag-handle").focus();
   markDirty();
   markReview();
 }
@@ -1377,7 +1428,7 @@ function renderMatrixHTML(matrix, cals) {
         nodes += `<button class="matrix-node${on ? " on" : ""}"
           onclick="toggleNode(${r},${c})"
           aria-label="Sync from ${esc(cals[r].name||cals[r].id)} to ${esc(cals[c].name||cals[c].id)}"
-          aria-pressed="${on}"></button>`;
+          aria-pressed="${on}" data-r="${r}" data-c="${c}"></button>`;
       }
     }
     rows += `<div class="matrix-row"><div class="matrix-row-lbl">${esc(shortLbl(cals[r]))}</div>${nodes}</div>`;
@@ -1467,7 +1518,10 @@ function toggleNode(r, c) {
   state.config.syncFlows = newFlows;
   markDirty();
   const panel = document.getElementById("matrix-panel");
-  if (panel) panel.innerHTML = renderMatrixHTML(matrix, cals);
+  if (panel) {
+    panel.innerHTML = renderMatrixHTML(matrix, cals);
+    panel.querySelector(`button[data-r="${r}"][data-c="${c}"]`)?.focus();
+  }
   const preset = detectPreset(matrix, cals);
   document.querySelectorAll(".btn-preset").forEach(b => {
     b.classList.toggle("on", (preset === "mesh" && b.textContent.startsWith("Mesh")) || (preset === "aggregate" && b.textContent.startsWith("Aggregate")));
