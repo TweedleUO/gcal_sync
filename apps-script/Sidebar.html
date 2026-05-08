@@ -1184,6 +1184,9 @@ function applyAccessResult(res, id) {
         ? ` Ask the owner to share it with <strong>${esc(state.scriptEmail)}</strong> and set "Make changes to events".`
         : ` Ask the owner to share it and grant "Make changes to events" permission.`;
       html = `<span class="cal-access-err">✗ Access denied.</span>${emailNote}`;
+    } else if (res.reason === "not-subscribed") {
+      html = `<span class="cal-access-warn">Calendar not added to your account.</span> ${addBtn}`;
+      if (dotEl) dotEl.className = "cal-dot warn";
     } else if (res.reason === "not-found") {
       html = `<span class="cal-access-err">✗ Not found</span> — check the ID, or try:${addBtn}`;
     } else {

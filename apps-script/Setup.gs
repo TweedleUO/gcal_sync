@@ -245,16 +245,28 @@ function subscribeToCalendar(calId) {
 
 function validateCalendar(calId) {
   if (!calId || !calId.trim()) return { ok: false, reason: "no-id" };
+  const id = calId.trim();
   try {
-    const cal = Calendar.Calendars.get(calId.trim());
-    const canWrite = ["owner", "writer"].includes(cal.accessRole);
-    return { ok: true, name: cal.summary || calId, accessRole: cal.accessRole, canWrite };
+    // CalendarList.get returns the user's calendar list entry, which includes accessRole.
+    // Calendar.Calendars.get returns the bare calendar resource and omits accessRole.
+    const entry = Calendar.CalendarList.get(id);
+    const canWrite = ["owner", "writer"].includes(entry.accessRole);
+    return { ok: true, name: entry.summary || id, accessRole: entry.accessRole, canWrite };
   } catch (e) {
     const msg = (e.message || "").toLowerCase();
-    const reason = (msg.includes("not found") || msg.includes("404")) ? "not-found"
-                 : (msg.includes("forbidden") || msg.includes("403")) ? "no-access"
-                 : "error";
-    return { ok: false, reason, error: e.message };
+    if (msg.includes("not found") || msg.includes("404")) {
+      // Not in user's calendar list — check if the calendar exists at all
+      try {
+        Calendar.Calendars.get(id);
+        // Exists but not subscribed — surface a subscribe prompt
+        return { ok: false, reason: "not-subscribed" };
+      } catch (e2) {
+        const m2 = (e2.message || "").toLowerCase();
+        return { ok: false, reason: m2.includes("forbidden") || m2.includes("403") ? "no-access" : "not-found" };
+      }
+    }
+    if (msg.includes("forbidden") || msg.includes("403")) return { ok: false, reason: "no-access" };
+    return { ok: false, reason: "error", error: e.message };
   }
 }
 
