@@ -136,9 +136,10 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
       const srcKey = buildSrcKey(srcCalId, srcEvent, norm);
       const body = buildBlockBody({ srcKey, norm, srcCalId, srcEvent, srcCal, targetCal, tz });
       const startStr = norm.allDay ? norm.startDate : norm.start.toISOString();
+      const logTitle = (srcCal.visibility === "fullyPrivate") ? null : (srcEvent.summary || null);
       desired.set(srcKey, {
         body, sig: getPrivate(body).sig,
-        srcCalId, srcTitle: srcEvent.summary || null, startStr
+        srcCalId, srcTitle: logTitle, startStr
       });
 
       if (!targetCal.allowDoubleBooking && !norm.allDay) hasTimedCandidates = true;
