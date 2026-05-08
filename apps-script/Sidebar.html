@@ -767,14 +767,14 @@
         <div class="toggle-row" style="min-height:auto;padding:0">
           <div class="toggle-lbl">
             <span style="font-weight:500">Test mode</span>
-            <span class="info" tabindex="0" data-tip="When on, syncs run but nothing is written to your calendars. Save & Activate will turn this off.">i</span>
+            <span class="info" tabindex="0" data-tip="When on, syncs run but nothing is written to your calendars. Click Activate to go live.">i</span>
           </div>
           <label class="toggle">
             <input type="checkbox" id="test-mode" onchange="state.config.settings.testMode = this.checked; markDirty()">
             <div class="toggle-track"></div><div class="toggle-thumb"></div>
           </label>
         </div>
-        <p style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45">Syncs run in read-only mode — nothing is written to your calendars. Click <strong>Run Now</strong> below to preview what would sync, then use Save &amp; Activate when you're ready to go live.</p>
+        <p style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45">Syncs run in read-only mode — nothing is written to your calendars. Click <strong>Run Now</strong> below to preview what would sync, then click <strong>Activate</strong> when you're ready to go live.</p>
       </div>
 
       <div class="activity-run-row">
@@ -902,7 +902,7 @@ function goStep(n) {
 
 // ── Status bar ────────────────────────────────────────────────────────────────
 function updateStatusBar() {
-  const hasCals  = state.config && state.config.calendars.length > 0;
+  const hasCals  = state.config && state.config.calendars.some(c => c.calendarId);
   const testMode = state.config && state.config.settings.testMode;
   const live     = hasCals && !testMode;
   const dot = document.getElementById("status-dot");
@@ -938,7 +938,7 @@ function relTime(d) {
 
 // ── Footer state ──────────────────────────────────────────────────────────────
 function updateFooter() {
-  const hasCals  = state.config && state.config.calendars.length > 0;
+  const hasCals  = state.config && state.config.calendars.some(c => c.calendarId);
   const testMode = state.config && state.config.settings.testMode;
   const live     = hasCals && !testMode;
   document.getElementById("save-btn").disabled = !state.isDirty;
@@ -1246,6 +1246,8 @@ function onDrop(e, targetCalId) {
   const srcRow = document.getElementById("cal-row-" + srcId);
   if (insertAfter) tgtRow.after(srcRow);
   else tgtRow.before(srcRow);
+  markDirty();
+  markReview();
 }
 
 // ── Calendar access validation ────────────────────────────────────────────────
@@ -1747,6 +1749,10 @@ function saveConfig() {
 
 function activateSync() {
   if (state.needsReview) return;
+  if (!state.config.calendars.some(c => c.calendarId)) {
+    toast("Add at least one calendar with a valid Calendar ID before activating.", "error");
+    return;
+  }
   if (!confirm("Activate will start writing busy blocks to your calendars. Continue?")) return;
   const prev = state.config.settings.testMode;
   state.config.settings.testMode = false;

@@ -338,8 +338,9 @@ function loadSidebarWithTracking({ confirmReturn }) {
 
   const domEl = () => ({
     style: {}, classList: { toggle: () => {}, add: () => {}, remove: () => {}, contains: () => false },
-    innerHTML: "", textContent: "", value: "", checked: false,
-    querySelectorAll: () => [], querySelector: () => null, dataset: {}
+    innerHTML: "", textContent: "", value: "", checked: false, disabled: false,
+    querySelectorAll: () => [], querySelector: () => null, dataset: {},
+    addEventListener: () => {}, setAttribute: () => {}, appendChild: () => {}
   });
 
   let saveConfigCalled = false;
@@ -359,7 +360,8 @@ function loadSidebarWithTracking({ confirmReturn }) {
       addEventListener: () => {},
       getElementById: () => domEl(),
       querySelectorAll: () => [],
-      querySelector: () => null
+      querySelector: () => null,
+      createElement: () => domEl()
     },
     google: { script: { run: new Proxy(runBuilder, { get: (t, k) => k in t ? t[k] : () => runBuilder }) } },
     clearTimeout: () => {}, setTimeout: () => 0,
@@ -407,24 +409,37 @@ describe("saveConfig (pure save)", () => {
 });
 
 describe("activateSync (U1: confirmation guard)", () => {
+  const activateConfig = {
+    ...baseConfig,
+    calendars: [{ id: "cal_1", calendarId: "work@gmail.com", name: "Work" }]
+  };
+
   test("when user cancels confirmation → saveConfigFromSidebar not called", () => {
     const { ctx, isSaveConfigCalled } = loadSidebarWithTracking({ confirmReturn: false });
-    ctx.init(baseConfig); // testMode: true
+    ctx.init(activateConfig);
     ctx.activateSync();
     expect(isSaveConfigCalled()).toBe(false);
   });
 
   test("when user confirms → saveConfigFromSidebar is called", () => {
     const { ctx, isSaveConfigCalled } = loadSidebarWithTracking({ confirmReturn: true });
-    ctx.init(baseConfig); // testMode: true
+    ctx.init(activateConfig);
     ctx.activateSync();
     expect(isSaveConfigCalled()).toBe(true);
   });
 
   test("when needsReview → returns before confirmation prompt", () => {
     const { ctx, isSaveConfigCalled, isConfirmCalled } = loadSidebarWithTracking({ confirmReturn: true });
-    ctx.init(baseConfig);
+    ctx.init(activateConfig);
     ctx.markReview();
+    ctx.activateSync();
+    expect(isConfirmCalled()).toBe(false);
+    expect(isSaveConfigCalled()).toBe(false);
+  });
+
+  test("when no calendars have a valid calendarId → returns before confirmation prompt", () => {
+    const { ctx, isSaveConfigCalled, isConfirmCalled } = loadSidebarWithTracking({ confirmReturn: true });
+    ctx.init(baseConfig); // calendars: []
     ctx.activateSync();
     expect(isConfirmCalled()).toBe(false);
     expect(isSaveConfigCalled()).toBe(false);
