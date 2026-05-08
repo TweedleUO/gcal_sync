@@ -1175,7 +1175,13 @@ function toggleNode(r, c) {
     b.classList.toggle("on", (preset === "mesh" && b.textContent.startsWith("Mesh")) || (preset === "aggregate" && b.textContent.startsWith("Aggregate")));
   });
   const aggRow = document.getElementById("agg-row");
-  if (aggRow) aggRow.classList.toggle("on", preset === "aggregate");
+  if (aggRow) {
+    aggRow.classList.toggle("on", preset === "aggregate");
+    if (preset === "aggregate") {
+      const sel = aggRow.querySelector("select");
+      if (sel) sel.value = state.config.syncFlows.aggregateTarget || "";
+    }
+  }
 }
 
 function applyPreset(preset) {
