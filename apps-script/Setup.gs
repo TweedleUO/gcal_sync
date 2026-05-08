@@ -186,7 +186,11 @@ function getLastRunSummary() {
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
-function runSyncNow() {
+function runSyncNow(configJson) {
+  if (configJson) {
+    const config = typeof configJson === "string" ? JSON.parse(configJson) : configJson;
+    PropertiesService.getScriptProperties().setProperty(PROP_CONFIG, JSON.stringify(config));
+  }
   calSync();
   return getLastRunSummary();
 }

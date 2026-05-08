@@ -1450,7 +1450,7 @@ function runNow() {
       btn.textContent = "Run now";
       toast(err.message || "Sync failed.", "error");
     })
-    .runSyncNow();
+    .runSyncNow(state.config);
 }
 
 function openCleanup() {
