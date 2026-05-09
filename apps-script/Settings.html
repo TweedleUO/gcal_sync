@@ -119,6 +119,7 @@
     /* ── Shell ──────────────────────────────────────────────────────── */
     .shell {
       display: flex;
+      max-width: 672px;
       min-height: 100vh;
     }
 
@@ -457,6 +458,8 @@
 
     /* ── Activity section ───────────────────────────────────────────── */
     .activity-run-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .run-dirty-hint { font-size: 12px; color: #d97706; }
+    @media (prefers-color-scheme: dark) { .run-dirty-hint { color: #fbbf24; } }
     .run-log-details { margin-top: 8px; }
     .run-log-details summary {
       font-size: 12px; color: var(--accent); cursor: pointer;
@@ -862,7 +865,8 @@
 
       <div class="activity-run-row">
         <button class="btn btn-primary" id="run-now-btn" onclick="runNow()">Run now</button>
-        <span style="font-size:12px;color:var(--muted)">Runs a full sync immediately using your current settings.</span>
+        <span id="run-clean-hint" style="font-size:12px;color:var(--muted)">Runs a full sync immediately using your current settings.</span>
+        <span id="run-dirty-hint" class="run-dirty-hint" style="display:none">⚠ Save your changes before running.</span>
       </div>
 
       <div id="last-run-wrap" style="display:none"></div>
@@ -1062,6 +1066,8 @@ function updateFooter() {
   document.getElementById("activate-btn").disabled        = state.needsReview;
   document.getElementById("deactivate-btn").style.display  = live ? "" : "none";
   document.getElementById("deactivate-btn").disabled       = false;
+  document.getElementById("run-clean-hint").style.display  = state.isDirty ? "none" : "";
+  document.getElementById("run-dirty-hint").style.display  = state.isDirty ? "" : "none";
   updateReadyBanner();
 }
 
