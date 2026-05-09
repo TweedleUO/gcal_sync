@@ -560,10 +560,15 @@
     /* title + reason */
     .log-entry-body { flex: 1; min-width: 0; }
     .log-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+    .log-meta  { font-size: 10px; color: var(--muted); }
+    .log-ids   { font-size: 9px; color: var(--muted); opacity: 0.75; word-break: break-all; }
+    .log-rec   { font-size: 9px; color: var(--accent); font-weight: 600; margin-left: 4px; vertical-align: middle; }
     .log-reason { font-size: 10px; color: var(--muted); }
     .log-err-msg { font-size: 10px; color: var(--danger); }
-    /* timestamp */
-    .log-time { flex-shrink: 0; font-size: 10px; color: var(--muted); white-space: nowrap; }
+    /* timestamp + duration column */
+    .log-time-col { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+    .log-time { font-size: 10px; color: var(--muted); white-space: nowrap; }
+    .log-dur  { font-size: 10px; color: var(--muted); white-space: nowrap; }
     /* empty / truncated notices */
     .log-no-changes { font-size: 11px; color: var(--muted); font-style: italic; padding: 3px 0; }
     .log-truncated  { font-size: 10px; color: var(--warn-text); padding: 3px 0; }
@@ -1857,20 +1862,31 @@ function buildFlowLogHTML(summary) {
       const op = e.o;
       const lbl = OP_LABEL[op] || op.toUpperCase();
       const time = e.s ? fmtLogTime(e.s) : "";
+      const recBadge = e.rec ? `<span class="log-rec">↻</span>` : "";
+      const metaLine = e.src ? `<div class="log-meta">${esc(e.src)}</div>` : "";
+      const ids = [e.eid ? "src:" + e.eid : null, e.bid ? "blk:" + e.bid : null].filter(Boolean).join(" · ");
+      const idsLine = ids ? `<div class="log-ids">${esc(ids)}</div>` : "";
       let body;
       if (op === "err") {
-        body = `<div class="log-title">${esc(e.t || "(untitled)")}</div>
-          <div class="log-err-msg">${esc(e.r || "")}: ${esc(e.e || "")}</div>`;
+        body = `<div class="log-title">${esc(e.t || "(untitled)")}${recBadge}</div>
+          ${metaLine}
+          <div class="log-err-msg">${esc(e.r || "")}: ${esc(e.e || "")}</div>
+          ${idsLine}`;
       } else if (op === "dupe") {
         body = `<div class="log-title">Duplicate: ${esc(e.k || e.id || "")}</div>`;
       } else {
-        body = `<div class="log-title">${esc(e.t || "(untitled)")}</div>
-          ${e.r ? `<div class="log-reason">${esc(e.r)}</div>` : ""}`;
+        body = `<div class="log-title">${esc(e.t || "(untitled)")}${recBadge}</div>
+          ${metaLine}
+          ${e.r ? `<div class="log-reason">${esc(e.r)}</div>` : ""}
+          ${idsLine}`;
       }
       html += `<div class="log-entry">
         <span class="log-op log-op-${op}">${lbl}</span>
         <div class="log-entry-body">${body}</div>
-        <span class="log-time">${time}</span>
+        <div class="log-time-col">
+          <span class="log-time">${time}</span>
+          ${e.dur ? `<span class="log-dur">${esc(e.dur)}</span>` : ""}
+        </div>
       </div>`;
     }
 

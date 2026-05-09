@@ -128,7 +128,7 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
 
   // 1. Build desired state from source calendars
   // desired map stores body/sig plus lightweight fields for the activity log
-  const desired = new Map(); // srcKey → { body, sig, srcCalId, srcTitle, startStr }
+  const desired = new Map(); // srcKey → { body, sig, srcTitle, startStr, src, eid, dur, rec }
   let hasTimedCandidates = false;
 
   for (const srcCal of sourceCals) {
@@ -151,7 +151,11 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
       const logTitle = (srcCal.visibility === "fullyPrivate") ? null : (srcEvent.summary || null);
       desired.set(srcKey, {
         body, sig: getPrivate(body).sig,
-        srcCalId, srcTitle: logTitle, startStr
+        srcTitle: logTitle, startStr,
+        src: srcCal.name || srcCalId,
+        eid: srcEvent.id || null,
+        dur: fmtDuration(norm),
+        rec: !!srcEvent.recurringEventId
       });
 
       if (!targetCal.allowDoubleBooking && !norm.allDay) hasTimedCandidates = true;
@@ -189,43 +193,48 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
   // 4. Upsert: insert missing, patch changed
   let inserts = 0, patches = 0, deletes = 0, skips = 0, errors = 0;
 
-  for (const [key, { body, sig, srcCalId, srcTitle, startStr }] of desired) {
+  for (const [key, { body, sig, srcTitle, startStr, src, eid, dur, rec }] of desired) {
     const cur = existing.get(key);
 
     if (!cur) {
       if (!targetCal.allowDoubleBooking && busyRanges && isTimedEvent(body)) {
         if (overlapsAny(busyRanges, body.start.dateTime, body.end.dateTime)) {
           skips++;
-          flowLog.push({ o: "skip", r: "overlap", t: srcTitle, s: startStr, c: srcCalId });
+          flowLog.push({ o: "skip", r: "overlap", t: srcTitle, s: startStr, src, eid, dur, rec });
           continue;
         }
       }
       inserts++;
-      flowLog.push({ o: "ins", t: srcTitle, s: startStr, c: srcCalId });
+      let bid = null;
       if (!CONFIG.settings.testMode) {
         try {
-          retry(() => Calendar.Events.insert(body, targetCalId, { sendUpdates: "none" }), "insert");
+          const created = retry(() => Calendar.Events.insert(body, targetCalId, { sendUpdates: "none" }), "insert");
+          bid = created?.id || null;
         } catch (e) {
           errors++;
-          flowLog.push({ o: "err", r: "insert", t: srcTitle, s: startStr, e: e.message });
+          flowLog.push({ o: "err", r: "insert", t: srcTitle, s: startStr, src, eid, dur, rec, e: e.message });
           log.error("Insert failed", { srcKey: key, error: e.message });
+          continue;
         }
       }
+      flowLog.push({ o: "ins", t: srcTitle, s: startStr, src, eid, dur, rec, bid });
       continue;
     }
 
     if (readSig(cur) === sig) { skips++; continue; }
     patches++;
-    flowLog.push({ o: "patch", t: srcTitle, s: startStr, c: srcCalId });
+    const bid = cur.id;
     if (!CONFIG.settings.testMode) {
       try {
         retry(() => Calendar.Events.patch(patchBody(body), targetCalId, cur.id, { sendUpdates: "none" }), "patch");
       } catch (e) {
         errors++;
-        flowLog.push({ o: "err", r: "patch", t: srcTitle, s: startStr, e: e.message });
+        flowLog.push({ o: "err", r: "patch", t: srcTitle, s: startStr, src, eid, dur, rec, bid, e: e.message });
         log.error("Patch failed", { srcKey: key, eventId: cur.id, error: e.message });
+        continue;
       }
     }
+    flowLog.push({ o: "patch", t: srcTitle, s: startStr, src, eid, dur, rec, bid });
   }
 
   // 5. Delete orphans
@@ -233,15 +242,26 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
     if (!desired.has(key)) {
       deletes++;
       const s = e.start?.dateTime || e.start?.date || null;
-      flowLog.push({ o: "del", t: e.summary || null, s });
+      const delPriv = getPrivate(e);
+      const delSrcCalId = delPriv?.srcCalId || null;
+      const delEntry = {
+        o: "del", t: e.summary || null, s,
+        bid: e.id,
+        eid: delPriv?.srcEventId || null,
+        src: sourceCals.find(c => c.calendarId === delSrcCalId)?.name || delSrcCalId || null,
+        dur: fmtDurationFromResource(e)
+      };
       if (!CONFIG.settings.testMode) {
         try {
           retry(() => Calendar.Events.remove(targetCalId, e.id), "remove(orphan)");
+          flowLog.push(delEntry);
         } catch (err) {
           errors++;
-          flowLog.push({ o: "err", r: "delete", t: e.summary || null, s, e: err.message });
+          flowLog.push({ ...delEntry, o: "err", r: "delete", e: err.message });
           log.error("Delete failed", { srcKey: key, eventId: e.id, error: err.message });
         }
+      } else {
+        flowLog.push(delEntry);
       }
     }
   }
@@ -344,6 +364,27 @@ function isWeekend(norm) {
     ? new Date(norm.startDate + "T12:00:00").getDay()
     : norm.start.getDay();
   return d === 0 || d === 6;
+}
+
+function fmtDuration(norm) {
+  if (norm.allDay) {
+    const days = Math.round(
+      (new Date(norm.endDate + "T00:00:00Z") - new Date(norm.startDate + "T00:00:00Z")) / 86400000
+    );
+    return days === 1 ? "1 day" : days + " days";
+  }
+  const mins = Math.round((norm.end - norm.start) / 60000);
+  if (mins < 60) return mins + "m";
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return m ? h + "h " + m + "m" : h + "h";
+}
+
+function fmtDurationFromResource(e) {
+  if (e.start?.date && e.end?.date)
+    return fmtDuration({ allDay: true, startDate: e.start.date, endDate: e.end.date });
+  if (e.start?.dateTime && e.end?.dateTime)
+    return fmtDuration({ allDay: false, start: new Date(e.start.dateTime), end: new Date(e.end.dateTime) });
+  return null;
 }
 
 // ── Managed Block Helpers ─────────────────────────────────────────────────────
