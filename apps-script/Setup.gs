@@ -11,7 +11,7 @@ const MAX_RUNS       = 5;
 // ── Web App ───────────────────────────────────────────────────────────────────
 
 function doGet() {
-  return HtmlService.createHtmlOutputFromFile("Sidebar")
+  return HtmlService.createHtmlOutputFromFile("Settings")
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT)
     .setTitle("Calendar Sync Setup");
 }

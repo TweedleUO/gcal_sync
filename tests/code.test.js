@@ -456,6 +456,15 @@ describe("buildBlockBody mirror mode", () => {
     expect(body.attendees).toBeUndefined();
     expect(body.description).toBeUndefined();
   });
+
+  test("name present → label prepended to summary", () => {
+    const namedSrc = { ...srcCal, name: "Aurora" };
+    const body = ctx.buildBlockBody({
+      srcKey: "k1", norm, srcCalId: "src@gmail.com", srcCal: namedSrc, targetCal,
+      srcEvent: { id: "e5", summary: "All hands" }, tz: "UTC"
+    });
+    expect(body.summary).toBe("Aurora: All hands");
+  });
 });
 
 // ── getManagedBy ──────────────────────────────────────────────────────────────
@@ -593,6 +602,27 @@ describe("buildBlockBody fullyPrivate + private modes", () => {
     const body = ctx.buildBlockBody({ srcKey: "k1", norm: timedNorm, srcCalId: "s@g.com",
       srcEvent: { id: "e1", summary: "Team standup" }, srcCal: sc, targetCal: tc, tz: "UTC" });
     expect(body.summary).toBe("Team standup");
+  });
+
+  test("private with name: label prepended to blockTitle", () => {
+    const sc = { id: "s", calendarId: "s@g.com", name: "Aurora", visibility: "private", blockTitle: "Busy" };
+    const body = ctx.buildBlockBody({ srcKey: "k1", norm: timedNorm, srcCalId: "s@g.com",
+      srcEvent: { id: "e1", summary: "Secret" }, srcCal: sc, targetCal: tc, tz: "UTC" });
+    expect(body.summary).toBe("Aurora: Busy");
+  });
+
+  test("private with name + showOriginalTitle: label prepended to original title", () => {
+    const sc = { id: "s", calendarId: "s@g.com", name: "Aurora", visibility: "private", blockTitle: "Busy", privateShowOriginalTitle: true };
+    const body = ctx.buildBlockBody({ srcKey: "k1", norm: timedNorm, srcCalId: "s@g.com",
+      srcEvent: { id: "e1", summary: "Team standup" }, srcCal: sc, targetCal: tc, tz: "UTC" });
+    expect(body.summary).toBe("Aurora: Team standup");
+  });
+
+  test("fullyPrivate with name: no label prepended", () => {
+    const sc = { id: "s", calendarId: "s@g.com", name: "Aurora", visibility: "fullyPrivate", blockTitle: "Blocked" };
+    const body = ctx.buildBlockBody({ srcKey: "k1", norm: timedNorm, srcCalId: "s@g.com",
+      srcEvent: { id: "e1", summary: "Secret meeting" }, srcCal: sc, targetCal: tc, tz: "UTC" });
+    expect(body.summary).toBe("Blocked");
   });
 
   test("private + privateShowOriginalTitle=true but no srcEvent.summary: falls back to blockTitle", () => {

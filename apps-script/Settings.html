@@ -119,8 +119,6 @@
     /* ── Shell ──────────────────────────────────────────────────────── */
     .shell {
       display: flex;
-      max-width: 680px;
-      margin: 0 auto;
       min-height: 100vh;
     }
 
@@ -215,13 +213,13 @@
     }
 
     /* ── Content ────────────────────────────────────────────────────── */
-    .content { flex: 1; padding: 24px 18px 56px; min-width: 0; }
+    .content { flex: 1; padding: 16px 14px 40px; min-width: 0; }
     .step { display: none; }
     .step.on { display: block; }
-    .step-hdr { margin-bottom: 20px; }
+    .step-hdr { margin-bottom: 14px; }
     .step-hdr-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-    .step-hdr h2 { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
-    .step-hdr p { font-size: 13px; color: var(--muted); }
+    .step-hdr h2 { font-size: 16px; font-weight: 700; letter-spacing: -.3px; }
+    .step-hdr p { font-size: 12px; color: var(--muted); }
 
     /* ── Calendar rows ──────────────────────────────────────────────── */
     .cal-list { display: flex; flex-direction: column; gap: 8px; }
@@ -309,7 +307,7 @@
     .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
     .divider {
       display: flex; align-items: center; gap: 8px;
-      margin: 16px 0 12px; color: var(--muted);
+      margin: 12px 0 10px; color: var(--muted);
       font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
     }
     .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
@@ -374,10 +372,10 @@
     }
     .info:hover::after, .info:focus::after {
       content: attr(data-tip); position: absolute;
-      bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+      bottom: calc(100% + 6px); left: 0; transform: none;
       background: #1f2937; color: white; font-size: 11px; font-weight: 400;
       padding: 6px 9px; border-radius: 5px; white-space: normal;
-      width: 220px; z-index: 100; line-height: 1.45; pointer-events: none;
+      width: 240px; z-index: 100; line-height: 1.45; pointer-events: none;
     }
     .info:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 

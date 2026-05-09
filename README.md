@@ -29,7 +29,7 @@ The project has four source files that need to be in your Apps Script project.
 3. **Add Setup.gs** — click **+** next to Files → **Script** → name it `Setup` → replace all its contents with [`apps-script/Setup.gs`](apps-script/Setup.gs)
    *(This file contains `doGet`, which serves the web app — without it you'll get "Script function not found: doGet")*
 
-4. **Add Sidebar.html** — click **+** next to Files → **HTML** → name it `Sidebar` (exactly) → replace all its contents with [`apps-script/Sidebar.html`](apps-script/Sidebar.html)
+4. **Add Settings.html** — click **+** next to Files → **HTML** → name it `Settings` (exactly) → replace all its contents with [`apps-script/Settings.html`](apps-script/Settings.html)
 
 5. **Set the manifest** — go to **Project Settings** (gear icon, bottom-left) → tick **Show "appsscript.json" manifest file in editor** → click the `appsscript.json` file that appears → replace all its contents with [`apps-script/appsscript.json`](apps-script/appsscript.json)
    *(This declares the required OAuth scopes — without it, authorization for `userinfo.email` may not be requested and the app will throw a permission error at runtime)*
@@ -61,8 +61,8 @@ Then open your Apps Script project, deploy as a web app, and open the setup URL.
 
 Combines `Code.gs` and `Setup.gs` into a single file for a two-file paste (instead of three):
 
-1. Run `npm run bundle` — generates `dist/Code.gs` and `dist/Sidebar.html`
-2. Create a new Apps Script project, paste `dist/Code.gs` into `Code.gs`, add an HTML file named `Sidebar` and paste `dist/Sidebar.html`
+1. Run `npm run bundle` — generates `dist/Code.gs` and `dist/Settings.html`
+2. Create a new Apps Script project, paste `dist/Code.gs` into `Code.gs`, add an HTML file named `Settings` and paste `dist/Settings.html`
 3. Follow steps 5–8 from the Quick start above (manifest, Calendar API, deploy)
 
 ### First-time clasp setup
@@ -95,7 +95,7 @@ gcal_sync/
 ├── apps-script/          Current deployment — Google Apps Script
 │   ├── Code.gs           Sync engine
 │   ├── Setup.gs          Config storage, triggers, sidebar handlers
-│   ├── Sidebar.html      Setup UI (web app)
+│   ├── Settings.html      Setup UI (web app)
 │   └── appsscript.json   Manifest — scopes, webapp config
 │
 ├── packages/

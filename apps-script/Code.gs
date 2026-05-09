@@ -418,20 +418,23 @@ function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, srcCal, targetCal, t
     body.end   = { dateTime: norm.end.toISOString(),   timeZone: tz };
   }
 
+  const label = srcCal.name ? srcCal.name + ": " : "";
+
   if (mode === "fullyPrivate") {
     body.summary    = blockTitle;
     body.visibility = "private";
     body.reminders  = { useDefault: false };
 
   } else if (mode === "private") {
-    body.summary    = (srcCal.privateShowOriginalTitle && srcEvent.summary)
-                        ? srcEvent.summary
-                        : blockTitle;
+    const title = (srcCal.privateShowOriginalTitle && srcEvent.summary)
+                    ? srcEvent.summary
+                    : blockTitle;
+    body.summary    = label + title;
     body.visibility = "private";
     body.reminders  = { useDefault: false };
 
   } else if (mode === "mirror") {
-    body.summary = srcEvent.summary || blockTitle;
+    body.summary = label + (srcEvent.summary || blockTitle);
     if (srcEvent.location)    body.location    = srcEvent.location;
     if (srcEvent.visibility)  body.visibility  = srcEvent.visibility;
     if (srcEvent.colorId)     body.colorId     = srcEvent.colorId;

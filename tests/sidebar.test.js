@@ -1,5 +1,5 @@
 /**
- * Tests for client-side logic in Sidebar.html.
+ * Tests for client-side logic in Settings.html.
  * Extracts the <script> block and runs it in a vm context with minimal DOM mocks.
  */
 const fs   = require("fs");
@@ -8,11 +8,11 @@ const vm   = require("vm");
 
 function loadSidebarScript() {
   const html = fs.readFileSync(
-    path.join(__dirname, "../apps-script/Sidebar.html"),
+    path.join(__dirname, "../apps-script/Settings.html"),
     "utf8"
   );
   const matches = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
-  if (!matches.length) throw new Error("No <script> block found in Sidebar.html");
+  if (!matches.length) throw new Error("No <script> block found in Settings.html");
   // Last <script> block is the app logic
   const src = matches[matches.length - 1][1];
 
@@ -335,7 +335,7 @@ function loadSidebarWithTracking({ confirmReturn }) {
   const fs   = require("fs");
   const path = require("path");
   const vm   = require("vm");
-  const html = fs.readFileSync(path.join(__dirname, "../apps-script/Sidebar.html"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "../apps-script/Settings.html"), "utf8");
   const matches = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
   const src = matches[matches.length - 1][1];
 
@@ -456,7 +456,7 @@ describe("runNow watchdog", () => {
     const fs   = require("fs");
     const path = require("path");
     const vm   = require("vm");
-    const html = fs.readFileSync(path.join(__dirname, "../apps-script/Sidebar.html"), "utf8");
+    const html = fs.readFileSync(path.join(__dirname, "../apps-script/Settings.html"), "utf8");
     const matches = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
     const src = matches[matches.length - 1][1];
 
