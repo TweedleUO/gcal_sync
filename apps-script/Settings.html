@@ -119,8 +119,7 @@
     /* ── Shell ──────────────────────────────────────────────────────── */
     .shell {
       display: flex;
-      max-width: 680px;
-      margin: 0 auto;
+      max-width: 672px;
       min-height: 100vh;
     }
 
@@ -215,13 +214,13 @@
     }
 
     /* ── Content ────────────────────────────────────────────────────── */
-    .content { flex: 1; padding: 24px 18px 56px; min-width: 0; }
+    .content { flex: 1; padding: 16px 14px 40px; min-width: 0; }
     .step { display: none; }
     .step.on { display: block; }
-    .step-hdr { margin-bottom: 20px; }
+    .step-hdr { margin-bottom: 14px; }
     .step-hdr-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-    .step-hdr h2 { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
-    .step-hdr p { font-size: 13px; color: var(--muted); }
+    .step-hdr h2 { font-size: 16px; font-weight: 700; letter-spacing: -.3px; }
+    .step-hdr p { font-size: 12px; color: var(--muted); }
 
     /* ── Calendar rows ──────────────────────────────────────────────── */
     .cal-list { display: flex; flex-direction: column; gap: 8px; }
@@ -309,7 +308,7 @@
     .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
     .divider {
       display: flex; align-items: center; gap: 8px;
-      margin: 16px 0 12px; color: var(--muted);
+      margin: 12px 0 10px; color: var(--muted);
       font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
     }
     .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
@@ -374,10 +373,10 @@
     }
     .info:hover::after, .info:focus::after {
       content: attr(data-tip); position: absolute;
-      bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+      bottom: calc(100% + 6px); left: 0; transform: none;
       background: #1f2937; color: white; font-size: 11px; font-weight: 400;
       padding: 6px 9px; border-radius: 5px; white-space: normal;
-      width: 220px; z-index: 100; line-height: 1.45; pointer-events: none;
+      width: 240px; z-index: 100; line-height: 1.45; pointer-events: none;
     }
     .info:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -459,6 +458,8 @@
 
     /* ── Activity section ───────────────────────────────────────────── */
     .activity-run-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .run-dirty-hint { font-size: 12px; color: #d97706; }
+    @media (prefers-color-scheme: dark) { .run-dirty-hint { color: #fbbf24; } }
     .run-log-details { margin-top: 8px; }
     .run-log-details summary {
       font-size: 12px; color: var(--accent); cursor: pointer;
@@ -559,10 +560,15 @@
     /* title + reason */
     .log-entry-body { flex: 1; min-width: 0; }
     .log-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+    .log-meta  { font-size: 10px; color: var(--muted); }
+    .log-ids   { font-size: 9px; color: var(--muted); opacity: 0.75; word-break: break-all; }
+    .log-rec   { font-size: 9px; color: var(--accent); font-weight: 600; margin-left: 4px; vertical-align: middle; }
     .log-reason { font-size: 10px; color: var(--muted); }
     .log-err-msg { font-size: 10px; color: var(--danger); }
-    /* timestamp */
-    .log-time { flex-shrink: 0; font-size: 10px; color: var(--muted); white-space: nowrap; }
+    /* timestamp + duration column */
+    .log-time-col { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+    .log-time { font-size: 10px; color: var(--muted); white-space: nowrap; }
+    .log-dur  { font-size: 10px; color: var(--muted); white-space: nowrap; }
     /* empty / truncated notices */
     .log-no-changes { font-size: 11px; color: var(--muted); font-style: italic; padding: 3px 0; }
     .log-truncated  { font-size: 10px; color: var(--warn-text); padding: 3px 0; }
@@ -573,6 +579,43 @@
       .log-op-del   { background: #451a03; color: #fcd34d; }
       .log-op-err   { background: #7f1d1d; color: #fca5a5; }
       .log-op-dupe  { background: #431407; color: #fdba74; }
+    }
+
+    /* ── Welcome card ───────────────────────────────────────────────── */
+    .welcome-card {
+      background: var(--accent-light); border: 1px solid var(--accent-border);
+      border-radius: var(--radius); padding: 16px 18px 14px; margin-bottom: 16px;
+      position: relative;
+    }
+    .welcome-card h3 { font-size: 14px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+    .welcome-card > p { font-size: 12px; line-height: 1.5; margin-bottom: 12px; color: var(--text); }
+    .welcome-steps { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+    .welcome-step { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; }
+    .welcome-step-num {
+      flex-shrink: 0; width: 20px; height: 20px; background: var(--accent); color: white;
+      border-radius: 50%; font-size: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .welcome-step-body { padding-top: 2px; line-height: 1.4; }
+    .welcome-step-body b { display: block; font-weight: 600; }
+    .welcome-step-body span { color: var(--muted); font-size: 11px; }
+    .welcome-dismiss {
+      background: var(--accent); color: white; border: none; border-radius: var(--radius-sm);
+      padding: 7px 14px; font-size: 12px; font-weight: 600; font-family: inherit;
+      cursor: pointer;
+    }
+    .welcome-dismiss:hover { background: var(--accent-h); }
+
+    /* ── Ready banner ───────────────────────────────────────────────── */
+    .ready-banner {
+      background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534;
+      border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 16px;
+      display: none; gap: 10px; align-items: flex-start; font-size: 12px; line-height: 1.5;
+    }
+    .ready-banner.on { display: flex; }
+    .ready-banner-icon { font-size: 15px; flex-shrink: 0; line-height: 1.4; }
+    @media (prefers-color-scheme: dark) {
+      .ready-banner { background: rgba(22,163,74,.1); border-color: rgba(22,163,74,.3); color: #4ade80; }
     }
 
     /* ── Panel card ─────────────────────────────────────────────────── */
@@ -682,9 +725,42 @@
         </div>
         <p>Add the Google Calendars you want to sync.</p>
       </div>
+
+      <!-- Welcome card — shown only on first visit (no calendars configured) -->
+      <div class="welcome-card" id="welcome-card" style="display:none" aria-label="Welcome">
+        <h3>Welcome to Calendar Sync</h3>
+        <p>This app keeps your Google Calendars in sync by creating placeholder "busy" events so you appear unavailable in the right places — without exposing private details.</p>
+        <div class="welcome-steps">
+          <div class="welcome-step">
+            <div class="welcome-step-num" aria-hidden="true">1</div>
+            <div class="welcome-step-body"><b>Add Calendars</b><span>Paste the Calendar ID for each calendar you want to connect.</span></div>
+          </div>
+          <div class="welcome-step">
+            <div class="welcome-step-num" aria-hidden="true">2</div>
+            <div class="welcome-step-body"><b>Sync Rules</b><span>Choose which calendars should see each other's busy times.</span></div>
+          </div>
+          <div class="welcome-step">
+            <div class="welcome-step-num" aria-hidden="true">3</div>
+            <div class="welcome-step-body"><b>Schedule</b><span>Set how often syncs run automatically.</span></div>
+          </div>
+          <div class="welcome-step">
+            <div class="welcome-step-num" aria-hidden="true">4</div>
+            <div class="welcome-step-body"><b>Activate</b><span>Preview in test mode first, then go live when you're ready.</span></div>
+          </div>
+        </div>
+        <button class="welcome-dismiss" onclick="dismissWelcome()">Get started →</button>
+      </div>
+
       <div class="cal-list" id="cal-list"></div>
       <div id="cal-empty" class="empty" style="display:none">
-        No calendars added yet. Click <strong>+ Add calendar</strong> to get started.
+        <strong>No calendars added yet.</strong>
+        <p style="margin-top:8px;font-size:12px;line-height:1.55">
+          Click <strong>+ Add calendar</strong> above and paste your <strong>Calendar ID</strong>.<br>
+          A Calendar ID is the email address of the calendar — for example
+          <em>you@gmail.com</em> or <em>name@group.calendar.google.com</em>.<br>
+          Find it in <a href="https://calendar.google.com/r/settings" target="_blank" rel="noopener"
+            style="color:var(--accent)">Google Calendar → Settings → [calendar name] → Calendar ID</a>.
+        </p>
       </div>
       <div class="cal-legend">
         <span><span class="cal-dot ok"></span>Read &amp; write</span>
@@ -782,9 +858,20 @@
         <p style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45">Syncs run in read-only mode — nothing is written to your calendars. Click <strong>Run Now</strong> below to preview what would sync, then click <strong>Activate</strong> when you're ready to go live.</p>
       </div>
 
+      <!-- Ready-to-activate banner — shown when setup is complete and testMode is on -->
+      <div class="ready-banner" id="ready-banner" role="status">
+        <span class="ready-banner-icon">✓</span>
+        <div>
+          <strong>Looking good!</strong> Your sync is configured and running in preview mode.
+          Use <strong>Run Now</strong> below to see what will be synced, then click
+          <strong>Activate</strong> in the footer when you're ready to go live.
+        </div>
+      </div>
+
       <div class="activity-run-row">
         <button class="btn btn-primary" id="run-now-btn" onclick="runNow()">Run now</button>
-        <span style="font-size:12px;color:var(--muted)">Runs a full sync immediately using your current settings.</span>
+        <span id="run-clean-hint" style="font-size:12px;color:var(--muted)">Runs a full sync immediately using your current settings.</span>
+        <span id="run-dirty-hint" class="run-dirty-hint" style="display:none">⚠ Save your changes before running.</span>
       </div>
 
       <div id="last-run-wrap" style="display:none"></div>
@@ -885,6 +972,8 @@ function init(data) {
   updateFooter();
   goStep(1);
   applyInfoLabels();
+  updateWelcomeCard();
+  updateReadyBanner();
 }
 
 function applyInfoLabels(root) {
@@ -892,6 +981,30 @@ function applyInfoLabels(root) {
     if (!el.getAttribute("aria-label")) el.setAttribute("aria-label", el.getAttribute("data-tip"));
     el.setAttribute("role", "img");
   });
+}
+
+function updateWelcomeCard() {
+  const card = document.getElementById("welcome-card");
+  if (!card) return;
+  const hasAny = state.config && state.config.calendars.length > 0;
+  card.style.display = (!hasAny && !state._welcomeDismissed) ? "" : "none";
+}
+
+function dismissWelcome() {
+  state._welcomeDismissed = true;
+  updateWelcomeCard();
+  // Focus the Add calendar button so the user's next action is obvious
+  const btn = document.querySelector(".step-hdr-row .btn-link");
+  if (btn) btn.focus();
+}
+
+function updateReadyBanner() {
+  const banner = document.getElementById("ready-banner");
+  if (!banner) return;
+  const hasCals   = state.config && state.config.calendars.some(c => c.calendarId);
+  const testMode  = state.config && state.config.settings.testMode;
+  const readyToActivate = hasCals && testMode && !state.isDirty && !state.needsReview;
+  banner.classList.toggle("on", !!readyToActivate);
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -930,6 +1043,7 @@ function updateStatusBar() {
     document.getElementById("status-label").textContent = "Inactive";
   }
   document.getElementById("test-pill").style.display = testMode ? "inline-flex" : "none";
+  updateReadyBanner();
 }
 
 function updateStatusMeta(summary) {
@@ -957,6 +1071,9 @@ function updateFooter() {
   document.getElementById("activate-btn").disabled        = state.needsReview;
   document.getElementById("deactivate-btn").style.display  = live ? "" : "none";
   document.getElementById("deactivate-btn").disabled       = false;
+  document.getElementById("run-clean-hint").style.display  = state.isDirty ? "none" : "";
+  document.getElementById("run-dirty-hint").style.display  = state.isDirty ? "" : "none";
+  updateReadyBanner();
 }
 
 function markReview() {
@@ -1031,6 +1148,17 @@ function buildCalForm(cal) {
       <input type="text" value="${esc(cal.name || "")}" placeholder="e.g. Work, Personal"
              oninput="updateCalField('${cal.id}','name',this.value);document.getElementById('cal-name-${cal.id}').textContent=this.value||'${esc(cal.id)}'">
     </div>
+    <div class="toggle-row">
+      <div class="toggle-lbl">
+        <span>Add label as prefix to events</span>
+        <span class="info" tabindex="0" data-tip="When on, prepends '[Label]: ' to event titles on target calendars.">i</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" ${cal.prefixLabel !== false ? "checked" : ""}
+               onchange="updateCalField('${cal.id}','prefixLabel',this.checked)">
+        <div class="toggle-track"></div><div class="toggle-thumb"></div>
+      </label>
+    </div>
     <div class="field">
       <div class="label-row">
         <label>Calendar ID or link</label>
@@ -1041,7 +1169,7 @@ function buildCalForm(cal) {
              onblur="onCalIdBlur(this,'${cal.id}')">
       <div id="cal-access-${cal.id}" class="cal-access-status"></div>
     </div>
-    <div class="divider">When this calendar receives synced events</div>
+    <div class="divider">When this calendar's events are synced to others</div>
     <div class="field">
       <div class="label-row"><label>Visibility</label></div>
       ${buildVisOpts(cal)}
@@ -1050,12 +1178,12 @@ function buildCalForm(cal) {
     <div class="field" id="block-title-field-${cal.id}"${isMirror ? ' style="display:none"' : ""}>
       <div class="label-row">
         <label>Block title</label>
-        <span class="info" tabindex="0" data-tip="Text shown as the event title for blocked events. Defaults to 'Blocked'.">i</span>
+        <span class="info" tabindex="0" data-tip="The event title used when this calendar's events are blocked on other calendars. Defaults to 'Blocked'.">i</span>
       </div>
       <input type="text" value="${esc(cal.blockTitle || "Blocked")}" placeholder="Blocked"
              oninput="updateCalField('${cal.id}','blockTitle',this.value)">
     </div>
-    <div class="divider">Filters</div>
+    <div class="divider">Filters (when used as a target)</div>
     <div class="toggle-row">
       <div class="toggle-lbl">
         <span>Accept all-day events</span>
@@ -1094,9 +1222,9 @@ function buildCalForm(cal) {
 
 function buildVisOpts(cal) {
   const opts = [
-    { v: "fullyPrivate", t: "Fully Private", d: "Only the block title is visible. No details are exposed to anyone, including organization administrators." },
-    { v: "private",      t: "Private",       d: "Choose the block title or show the original event title. Note: organization administrators can see the title." },
-    { v: "mirror",       t: "As-Is",         d: "All event details are passed through as-is, including the original privacy settings." }
+    { v: "fullyPrivate", t: "Fully Private", d: "Only the block title is shared. No event details are exposed on other calendars, including to organization administrators." },
+    { v: "private",      t: "Private",       d: "Share the block title (or the original event title). Note: organization administrators can see the title." },
+    { v: "mirror",       t: "As-Is",         d: "All event details are passed through as-is, including title, description, location, and original privacy settings." }
   ];
   const items = opts.map(o => `
     <div class="vis-opt${cal.visibility === o.v ? " on" : ""}"
@@ -1117,7 +1245,7 @@ function buildVisSub(cal) {
     <div class="toggle-row" style="padding-top:6px">
       <div class="toggle-lbl">
         <span>Show original event title</span>
-        <span class="info" tabindex="0" data-tip="When on, the original event title is used instead of the block title.">i</span>
+        <span class="info" tabindex="0" data-tip="When on, the original event title from this calendar is shared on other calendars instead of the block title.">i</span>
       </div>
       <label class="toggle">
         <input type="checkbox" ${cal.privateShowOriginalTitle ? "checked" : ""}
@@ -1125,7 +1253,7 @@ function buildVisSub(cal) {
         <div class="toggle-track"></div><div class="toggle-thumb"></div>
       </label>
     </div>`;
-  if (cal.visibility === "mirror") return `<div class="note note-warn" style="margin-top:6px">Recurring events become individual instances on the target calendar — the recurrence rule is not carried over.</div>`;
+  if (cal.visibility === "mirror") return `<div class="note note-warn" style="margin-top:6px">Recurring events from this calendar become individual instances on destination calendars — the recurrence rule is not carried over.</div>`;
   return "";
 }
 
@@ -1175,7 +1303,7 @@ function addCalendar() {
   const id = "cal_" + (++state.calIdCounter);
   const cal = {
     id, name: "Calendar" + state.calIdCounter, provider: "google", calendarId: "",
-    blockTitle: "Blocked", visibility: "fullyPrivate",
+    blockTitle: "Blocked", visibility: "fullyPrivate", prefixLabel: true,
     privateShowOriginalTitle: false, weekdayEventsOnly: false,
     acceptAllDayEvents: true, allowDoubleBooking: true
   };
@@ -1184,6 +1312,7 @@ function addCalendar() {
   const row = buildCalRow(cal);
   document.getElementById("cal-list").appendChild(row);
   document.getElementById("cal-form-" + id).classList.add("on");
+  updateWelcomeCard();
   markReview();
   markDirty();
 }
@@ -1193,6 +1322,7 @@ function removeCalendar(evt, calId) {
   state.config.calendars = state.config.calendars.filter(c => c.id !== calId);
   document.getElementById("cal-row-" + calId)?.remove();
   if (!state.config.calendars.length) document.getElementById("cal-empty").style.display = "block";
+  updateWelcomeCard();
   markReview();
   markDirty();
 }
@@ -1342,6 +1472,9 @@ function applyAccessResult(res, id) {
       if (dotEl) dotEl.className = "cal-dot warn";
     } else if (res.reason === "not-found") {
       html = `<span class="cal-access-err">✗ Not found</span> — check the ID, or try:${addBtn}`;
+    } else if (res.reason === "error" && /calendar is not defined/i.test(res.error || "")) {
+      html = `<span class="cal-access-err">✗ Calendar Advanced API not enabled.</span> Open <strong>Extensions → Apps Script → Services</strong>, find <em>Google Calendar API</em>, and click Add.`;
+      if (dotEl) dotEl.className = "cal-dot err";
     } else {
       html = `<span class="cal-access-err">✗ ${esc(res.error || "Could not verify access.")}</span>${addBtn}`;
     }
@@ -1729,20 +1862,31 @@ function buildFlowLogHTML(summary) {
       const op = e.o;
       const lbl = OP_LABEL[op] || op.toUpperCase();
       const time = e.s ? fmtLogTime(e.s) : "";
+      const recBadge = e.rec ? `<span class="log-rec">↻</span>` : "";
+      const metaLine = e.src ? `<div class="log-meta">${esc(e.src)}</div>` : "";
+      const ids = [e.eid ? "src:" + e.eid : null, e.bid ? "blk:" + e.bid : null].filter(Boolean).join(" · ");
+      const idsLine = ids ? `<div class="log-ids">${esc(ids)}</div>` : "";
       let body;
       if (op === "err") {
-        body = `<div class="log-title">${esc(e.t || "(untitled)")}</div>
-          <div class="log-err-msg">${esc(e.r || "")}: ${esc(e.e || "")}</div>`;
+        body = `<div class="log-title">${esc(e.t || "(untitled)")}${recBadge}</div>
+          ${metaLine}
+          <div class="log-err-msg">${esc(e.r || "")}: ${esc(e.e || "")}</div>
+          ${idsLine}`;
       } else if (op === "dupe") {
         body = `<div class="log-title">Duplicate: ${esc(e.k || e.id || "")}</div>`;
       } else {
-        body = `<div class="log-title">${esc(e.t || "(untitled)")}</div>
-          ${e.r ? `<div class="log-reason">${esc(e.r)}</div>` : ""}`;
+        body = `<div class="log-title">${esc(e.t || "(untitled)")}${recBadge}</div>
+          ${metaLine}
+          ${e.r ? `<div class="log-reason">${esc(e.r)}</div>` : ""}
+          ${idsLine}`;
       }
       html += `<div class="log-entry">
         <span class="log-op log-op-${op}">${lbl}</span>
         <div class="log-entry-body">${body}</div>
-        <span class="log-time">${time}</span>
+        <div class="log-time-col">
+          <span class="log-time">${time}</span>
+          ${e.dur ? `<span class="log-dur">${esc(e.dur)}</span>` : ""}
+        </div>
       </div>`;
     }
 

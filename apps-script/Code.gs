@@ -9,15 +9,15 @@
  *  - Config saved via the Setup web app (or saveConfigFromSidebar in Setup.gs)
  */
 
-// Lazy — Session.getEffectiveUser() returns "" on time-based/calendar triggers.
+// Lazy — Session.getEffectiveUser() returns "" on time-based/calendar triggers,
+// and can throw if the userinfo.email scope was not granted at authorization time.
 // Owner email is persisted at save time so trigger runs resolve the correct value.
 let _managedBy = null;
 function getManagedBy() {
   if (!_managedBy) {
-    const email = PropertiesService.getScriptProperties().getProperty("ownerEmail")
-                 || Session.getEffectiveUser().getEmail()
-                 || "unknown";
-    _managedBy = "gcal-sync:" + email;
+    let email = PropertiesService.getScriptProperties().getProperty("ownerEmail") || "";
+    if (!email) { try { email = Session.getEffectiveUser().getEmail(); } catch (_) {} }
+    _managedBy = "gcal-sync:" + (email || "unknown");
   }
   return _managedBy;
 }
@@ -57,17 +57,29 @@ function calSync(e) {
       return;
     }
 
+    // On a calendar-update trigger, only run flows whose SOURCE calendar changed.
+    // This prevents writes to a target calendar (which may also be a source in another
+    // flow) from triggering an unnecessary full re-run and creating a feedback loop.
+    const activeFlows = e?.calendarId
+      ? flows.filter(f => f.sourceCals.some(c => c.calendarId === e.calendarId))
+      : flows;
+
+    if (!activeFlows.length) {
+      log.info("No flows for changed calendar — skipping", { calendarId: e.calendarId });
+      return;
+    }
+
     const tz = Session.getScriptTimeZone() || "UTC";
     const { timeMinISO, timeMaxISO } = syncWindow(CONFIG.settings.timeFrameDays, tz);
 
     log.info("Starting sync", {
-      flowCount: flows.length,
+      flowCount: activeFlows.length,
       timeMinISO,
       timeMaxISO,
       testMode: CONFIG.settings.testMode
     });
 
-    for (const flow of flows) {
+    for (const flow of activeFlows) {
       log.info("Running flow", { target: flow.targetCal.id, sources: flow.sourceCals.map(c => c.id) });
       try {
         const result = runFlow({ ...flow, timeMinISO, timeMaxISO, tz, log });
@@ -116,7 +128,7 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
 
   // 1. Build desired state from source calendars
   // desired map stores body/sig plus lightweight fields for the activity log
-  const desired = new Map(); // srcKey → { body, sig, srcCalId, srcTitle, startStr }
+  const desired = new Map(); // srcKey → { body, sig, srcTitle, startStr, src, eid, dur, rec }
   let hasTimedCandidates = false;
 
   for (const srcCal of sourceCals) {
@@ -136,9 +148,14 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
       const srcKey = buildSrcKey(srcCalId, srcEvent, norm);
       const body = buildBlockBody({ srcKey, norm, srcCalId, srcEvent, srcCal, targetCal, tz });
       const startStr = norm.allDay ? norm.startDate : norm.start.toISOString();
+      const logTitle = (srcCal.visibility === "fullyPrivate") ? null : (srcEvent.summary || null);
       desired.set(srcKey, {
         body, sig: getPrivate(body).sig,
-        srcCalId, srcTitle: srcEvent.summary || null, startStr
+        srcTitle: logTitle, startStr,
+        src: srcCal.name || srcCalId,
+        eid: srcEvent.id || null,
+        dur: fmtDuration(norm),
+        rec: !!srcEvent.recurringEventId
       });
 
       if (!targetCal.allowDoubleBooking && !norm.allDay) hasTimedCandidates = true;
@@ -176,43 +193,48 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
   // 4. Upsert: insert missing, patch changed
   let inserts = 0, patches = 0, deletes = 0, skips = 0, errors = 0;
 
-  for (const [key, { body, sig, srcCalId, srcTitle, startStr }] of desired) {
+  for (const [key, { body, sig, srcTitle, startStr, src, eid, dur, rec }] of desired) {
     const cur = existing.get(key);
 
     if (!cur) {
       if (!targetCal.allowDoubleBooking && busyRanges && isTimedEvent(body)) {
         if (overlapsAny(busyRanges, body.start.dateTime, body.end.dateTime)) {
           skips++;
-          flowLog.push({ o: "skip", r: "overlap", t: srcTitle, s: startStr, c: srcCalId });
+          flowLog.push({ o: "skip", r: "overlap", t: srcTitle, s: startStr, src, eid, dur, rec });
           continue;
         }
       }
       inserts++;
-      flowLog.push({ o: "ins", t: srcTitle, s: startStr, c: srcCalId });
+      let bid = null;
       if (!CONFIG.settings.testMode) {
         try {
-          retry(() => Calendar.Events.insert(body, targetCalId, { sendUpdates: "none" }), "insert");
+          const created = retry(() => Calendar.Events.insert(body, targetCalId, { sendUpdates: "none" }), "insert");
+          bid = created?.id || null;
         } catch (e) {
           errors++;
-          flowLog.push({ o: "err", r: "insert", t: srcTitle, s: startStr, e: e.message });
+          flowLog.push({ o: "err", r: "insert", t: srcTitle, s: startStr, src, eid, dur, rec, e: e.message });
           log.error("Insert failed", { srcKey: key, error: e.message });
+          continue;
         }
       }
+      flowLog.push({ o: "ins", t: srcTitle, s: startStr, src, eid, dur, rec, bid });
       continue;
     }
 
     if (readSig(cur) === sig) { skips++; continue; }
     patches++;
-    flowLog.push({ o: "patch", t: srcTitle, s: startStr, c: srcCalId });
+    const bid = cur.id;
     if (!CONFIG.settings.testMode) {
       try {
         retry(() => Calendar.Events.patch(patchBody(body), targetCalId, cur.id, { sendUpdates: "none" }), "patch");
       } catch (e) {
         errors++;
-        flowLog.push({ o: "err", r: "patch", t: srcTitle, s: startStr, e: e.message });
+        flowLog.push({ o: "err", r: "patch", t: srcTitle, s: startStr, src, eid, dur, rec, bid, e: e.message });
         log.error("Patch failed", { srcKey: key, eventId: cur.id, error: e.message });
+        continue;
       }
     }
+    flowLog.push({ o: "patch", t: srcTitle, s: startStr, src, eid, dur, rec, bid });
   }
 
   // 5. Delete orphans
@@ -220,15 +242,26 @@ function runFlow({ targetCal, sourceCals, timeMinISO, timeMaxISO, tz, log }) {
     if (!desired.has(key)) {
       deletes++;
       const s = e.start?.dateTime || e.start?.date || null;
-      flowLog.push({ o: "del", t: e.summary || null, s });
+      const delPriv = getPrivate(e);
+      const delSrcCalId = delPriv?.srcCalId || null;
+      const delEntry = {
+        o: "del", t: e.summary || null, s,
+        bid: e.id,
+        eid: delPriv?.srcEventId || null,
+        src: sourceCals.find(c => c.calendarId === delSrcCalId)?.name || delSrcCalId || null,
+        dur: fmtDurationFromResource(e)
+      };
       if (!CONFIG.settings.testMode) {
         try {
           retry(() => Calendar.Events.remove(targetCalId, e.id), "remove(orphan)");
+          flowLog.push(delEntry);
         } catch (err) {
           errors++;
-          flowLog.push({ o: "err", r: "delete", t: e.summary || null, s, e: err.message });
+          flowLog.push({ ...delEntry, o: "err", r: "delete", e: err.message });
           log.error("Delete failed", { srcKey: key, eventId: e.id, error: err.message });
         }
+      } else {
+        flowLog.push(delEntry);
       }
     }
   }
@@ -333,6 +366,27 @@ function isWeekend(norm) {
   return d === 0 || d === 6;
 }
 
+function fmtDuration(norm) {
+  if (norm.allDay) {
+    const days = Math.round(
+      (new Date(norm.endDate + "T00:00:00Z") - new Date(norm.startDate + "T00:00:00Z")) / 86400000
+    );
+    return days === 1 ? "1 day" : days + " days";
+  }
+  const mins = Math.round((norm.end - norm.start) / 60000);
+  if (mins < 60) return mins + "m";
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return m ? h + "h " + m + "m" : h + "h";
+}
+
+function fmtDurationFromResource(e) {
+  if (e.start?.date && e.end?.date)
+    return fmtDuration({ allDay: true, startDate: e.start.date, endDate: e.end.date });
+  if (e.start?.dateTime && e.end?.dateTime)
+    return fmtDuration({ allDay: false, start: new Date(e.start.dateTime), end: new Date(e.end.dateTime) });
+  return null;
+}
+
 // ── Managed Block Helpers ─────────────────────────────────────────────────────
 
 function getPrivate(e) {
@@ -347,10 +401,16 @@ function isManagedBlock(e) {
 // Matches managed blocks from any account running this app — used for chain
 // prevention so no instance re-syncs another instance's placeholder blocks.
 function isAnyManagedBlock(e) {
-  const p = getPrivate(e);
-  return !!(p && typeof p.managedBy === "string" &&
-            (p.managedBy === "gcal-sync" || p.managedBy.startsWith("gcal-sync:")) &&
-            p.srcKey);
+  // Check private first — most reliable when the reading script wrote the event.
+  const priv = getPrivate(e);
+  if (priv?.managedBy && priv.srcKey) {
+    const m = priv.managedBy;
+    if (typeof m === "string" && (m === "gcal-sync" || m.startsWith("gcal-sync:"))) return true;
+  }
+  // Fall back to shared — propagates cross-calendar-copy and is readable cross-instance,
+  // making it a reliable guard against propagation-lag false negatives.
+  const m = e.extendedProperties?.shared?.managedBy;
+  return !!(m && typeof m === "string" && (m === "gcal-sync" || m.startsWith("gcal-sync:")));
 }
 
 function readSrcKey(e) {
@@ -373,9 +433,9 @@ function readSig(e) {
  *  private      — blockTitle (or original title if privateShowOriginalTitle), marked private
  *  mirror       — full passthrough of source event fields; recurring instances become individual events
  */
-function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, targetCal, tz }) {
-  const mode = targetCal.visibility || "fullyPrivate";
-  const blockTitle = targetCal.blockTitle || "Blocked";
+function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, srcCal, targetCal, tz }) {
+  const mode = srcCal.visibility || "fullyPrivate";
+  const blockTitle = srcCal.blockTitle || "Blocked";
 
   const priv = {
     managedBy: getManagedBy(),
@@ -387,7 +447,9 @@ function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, targetCal, tz }) {
     srcICalUID: srcEvent.iCalUID || ""
   };
 
-  const body = { extendedProperties: { private: priv } };
+  // shared.managedBy is readable cross-instance and survives propagation lag better
+  // than private properties, so it acts as a reliable chain-prevention fallback.
+  const body = { extendedProperties: { private: priv, shared: { managedBy: getManagedBy() } } };
 
   if (norm.allDay) {
     body.start = { date: norm.startDate };
@@ -397,31 +459,40 @@ function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, targetCal, tz }) {
     body.end   = { dateTime: norm.end.toISOString(),   timeZone: tz };
   }
 
+  const label = (srcCal.prefixLabel !== false && srcCal.name) ? srcCal.name + ": " : "";
+
   if (mode === "fullyPrivate") {
-    body.summary    = blockTitle;
+    body.summary    = label + blockTitle;
     body.visibility = "private";
     body.reminders  = { useDefault: false };
 
   } else if (mode === "private") {
-    body.summary    = (targetCal.privateShowOriginalTitle && srcEvent.summary)
-                        ? srcEvent.summary
-                        : blockTitle;
+    const title = (srcCal.privateShowOriginalTitle && srcEvent.summary)
+                    ? srcEvent.summary
+                    : blockTitle;
+    body.summary    = label + title;
     body.visibility = "private";
     body.reminders  = { useDefault: false };
 
   } else if (mode === "mirror") {
-    body.summary = srcEvent.summary || blockTitle;
-    if (srcEvent.description) body.description = srcEvent.description;
+    body.summary = label + (srcEvent.summary || blockTitle);
     if (srcEvent.location)    body.location    = srcEvent.location;
     if (srcEvent.visibility)  body.visibility  = srcEvent.visibility;
     if (srcEvent.colorId)     body.colorId     = srcEvent.colorId;
     body.reminders = CONFIG.settings.enableReminder
       ? (srcEvent.reminders || { useDefault: true })
       : { useDefault: false };
+    // Attendees are included as context text in the description — NOT as Calendar attendees.
+    // Adding real attendees to the block would create a new invitation on each attendee's
+    // calendar, which is wrong: this block is a read-only placeholder, not a new meeting.
+    let desc = srcEvent.description || "";
     if (srcEvent.attendees && srcEvent.attendees.length > 0) {
-      // sendUpdates:'none' is passed at insert/patch time — attendees are copied for display only
-      body.attendees = srcEvent.attendees.map(a => ({ email: a.email }));
+      const list = srcEvent.attendees
+        .map(a => a.displayName ? `${a.displayName} (${a.email})` : a.email)
+        .join(", ");
+      desc = desc ? `${desc}\n\nAttendees: ${list}` : `Attendees: ${list}`;
     }
+    if (desc) body.description = desc;
   }
 
   priv.sig = computeSig(body);
@@ -440,7 +511,6 @@ function patchBody(b) {
   if (b.location    !== undefined) patch.location    = b.location;
   if (b.visibility  !== undefined) patch.visibility  = b.visibility;
   if (b.colorId     !== undefined) patch.colorId     = b.colorId;
-  if (b.attendees   !== undefined) patch.attendees   = b.attendees;
   return patch;
 }
 
@@ -457,7 +527,6 @@ function computeSig(body) {
     visibility:  body.visibility  || "",
     colorId:     body.colorId     || "",
     reminders:   body.reminders   || null,
-    attendees:   body.attendees   || null,
     managedBy:   p.managedBy      || "",
     srcKey:      p.srcKey         || ""
   });

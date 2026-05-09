@@ -3,8 +3,8 @@
  * Bundles apps-script/ files into dist/ for paste-into-editor distribution.
  *
  * Output:
- *   dist/Code.gs      — Code.gs + Setup.gs concatenated (paste into a .gs file)
- *   dist/Sidebar.html — copied as-is (create an HTML file named "Sidebar", paste this)
+ *   dist/Code.gs       — Code.gs + Setup.gs concatenated (paste into a .gs file)
+ *   dist/Settings.html — copied as-is (create an HTML file named "Settings", paste this)
  */
 const fs = require('fs');
 const path = require('path');
@@ -28,11 +28,11 @@ fs.mkdirSync(DIST, { recursive: true });
 fs.writeFileSync(path.join(DIST, 'Code.gs'), bundle);
 console.log(`Bundled  → dist/Code.gs`);
 
-// Copy Sidebar.html
-const htmlSrc = path.join(SRC, 'Sidebar.html');
+// Copy Settings.html
+const htmlSrc = path.join(SRC, 'Settings.html');
 if (fs.existsSync(htmlSrc)) {
-  fs.copyFileSync(htmlSrc, path.join(DIST, 'Sidebar.html'));
-  console.log(`Copied   → dist/Sidebar.html`);
+  fs.copyFileSync(htmlSrc, path.join(DIST, 'Settings.html'));
+  console.log(`Copied   → dist/Settings.html`);
 } else {
-  console.warn('Skipping missing file: Sidebar.html');
+  console.warn('Skipping missing file: Settings.html');
 }
