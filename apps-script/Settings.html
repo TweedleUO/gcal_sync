@@ -1143,6 +1143,17 @@ function buildCalForm(cal) {
       <input type="text" value="${esc(cal.name || "")}" placeholder="e.g. Work, Personal"
              oninput="updateCalField('${cal.id}','name',this.value);document.getElementById('cal-name-${cal.id}').textContent=this.value||'${esc(cal.id)}'">
     </div>
+    <div class="toggle-row">
+      <div class="toggle-lbl">
+        <span>Add label as prefix to events</span>
+        <span class="info" tabindex="0" data-tip="When on, prepends '[Label]: ' to event titles on target calendars.">i</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" ${cal.prefixLabel !== false ? "checked" : ""}
+               onchange="updateCalField('${cal.id}','prefixLabel',this.checked)">
+        <div class="toggle-track"></div><div class="toggle-thumb"></div>
+      </label>
+    </div>
     <div class="field">
       <div class="label-row">
         <label>Calendar ID or link</label>
@@ -1287,7 +1298,7 @@ function addCalendar() {
   const id = "cal_" + (++state.calIdCounter);
   const cal = {
     id, name: "Calendar" + state.calIdCounter, provider: "google", calendarId: "",
-    blockTitle: "Blocked", visibility: "fullyPrivate",
+    blockTitle: "Blocked", visibility: "fullyPrivate", prefixLabel: true,
     privateShowOriginalTitle: false, weekdayEventsOnly: false,
     acceptAllDayEvents: true, allowDoubleBooking: true
   };

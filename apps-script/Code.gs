@@ -418,10 +418,10 @@ function buildBlockBody({ srcKey, norm, srcCalId, srcEvent, srcCal, targetCal, t
     body.end   = { dateTime: norm.end.toISOString(),   timeZone: tz };
   }
 
-  const label = srcCal.name ? srcCal.name + ": " : "";
+  const label = (srcCal.prefixLabel !== false && srcCal.name) ? srcCal.name + ": " : "";
 
   if (mode === "fullyPrivate") {
-    body.summary    = blockTitle;
+    body.summary    = label + blockTitle;
     body.visibility = "private";
     body.reminders  = { useDefault: false };
 

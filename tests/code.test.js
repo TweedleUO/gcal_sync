@@ -618,8 +618,15 @@ describe("buildBlockBody fullyPrivate + private modes", () => {
     expect(body.summary).toBe("Aurora: Team standup");
   });
 
-  test("fullyPrivate with name: no label prepended", () => {
-    const sc = { id: "s", calendarId: "s@g.com", name: "Aurora", visibility: "fullyPrivate", blockTitle: "Blocked" };
+  test("fullyPrivate with name and prefixLabel=true: label prepended to blockTitle", () => {
+    const sc = { id: "s", calendarId: "s@g.com", name: "Aurora", visibility: "fullyPrivate", blockTitle: "Blocked", prefixLabel: true };
+    const body = ctx.buildBlockBody({ srcKey: "k1", norm: timedNorm, srcCalId: "s@g.com",
+      srcEvent: { id: "e1", summary: "Secret meeting" }, srcCal: sc, targetCal: tc, tz: "UTC" });
+    expect(body.summary).toBe("Aurora: Blocked");
+  });
+
+  test("fullyPrivate with name and prefixLabel=false: no label prepended", () => {
+    const sc = { id: "s", calendarId: "s@g.com", name: "Aurora", visibility: "fullyPrivate", blockTitle: "Blocked", prefixLabel: false };
     const body = ctx.buildBlockBody({ srcKey: "k1", norm: timedNorm, srcCalId: "s@g.com",
       srcEvent: { id: "e1", summary: "Secret meeting" }, srcCal: sc, targetCal: tc, tz: "UTC" });
     expect(body.summary).toBe("Blocked");
